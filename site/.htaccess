@@ -1,0 +1,14 @@
+Options -Indexes
+RewriteEngine On
+
+# Route everything through index.php except real files/dirs
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^ index.php [QSA,L]
+
+# Block direct access to sensitive dirs (always served from site/ webroot)
+# These should live outside webroot anyway
+<FilesMatch "\.(env|sql|sqlite|sqlite3|md|log|json)$">
+    Order allow,deny
+    Deny from all
+</FilesMatch>

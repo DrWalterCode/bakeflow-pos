@@ -1,0 +1,16 @@
+/.env
+/.playwright-mcp/
+/.claude/
+/.mcp.json
+/._*
+/mcp-cpanel/node_modules/
+/database/*.sqlite
+/database/backups/
+/storage/
+/sync/
+/live-pos-menu*.png
+/pos-menu-preview.png
+/*.png
+*.log
+Thumbs.db
+Desktop.ini
