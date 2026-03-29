@@ -230,8 +230,18 @@ class SaleController extends BaseController
             // Deduct stock for non-cake products
             foreach ($lineItems as $line) {
                 if (!$line['is_cake']) {
-                    $db->prepare("UPDATE products SET stock_quantity = MAX(0, stock_quantity - ?) WHERE id = ?")
-                       ->execute([$line['quantity'], $line['product_id']]);
+                    $db->prepare("
+                        UPDATE products
+                        SET stock_quantity = CASE
+                            WHEN stock_quantity - ? < 0 THEN 0
+                            ELSE stock_quantity - ?
+                        END
+                        WHERE id = ?
+                    ")->execute([
+                        $line['quantity'],
+                        $line['quantity'],
+                        $line['product_id'],
+                    ]);
                 }
             }
 

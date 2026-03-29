@@ -133,10 +133,30 @@ const BFPOS_CONFIG = {
          ============================ -->
     <section id="product-panel">
 
+        <div class="product-toolbar">
+            <div class="product-toolbar-copy">
+                <div class="panel-eyebrow">Fast Sale</div>
+                <h1>Build the order quickly</h1>
+                <p>Choose a category or search the product name, then review the cart before taking payment.</p>
+            </div>
+            <label class="product-search" for="product-search">
+                <span>Find product</span>
+                <input type="search" id="product-search" placeholder="Search pies, cupcakes, muffins..." autocomplete="off" oninput="POS.filterProducts(this.value)">
+            </label>
+        </div>
+
         <!-- Category tabs -->
         <nav id="category-tabs" role="tablist" aria-label="Product categories">
             <!-- Populated by JS -->
         </nav>
+
+        <div class="panel-quickbar">
+            <span id="product-results-count">Loading products...</span>
+            <div class="panel-shortcuts">
+                <span>F1-F8 switch categories</span>
+                <span>Enter opens checkout</span>
+            </div>
+        </div>
 
         <!-- Product grid -->
         <div id="product-grid" role="list" aria-label="Products">
@@ -150,8 +170,14 @@ const BFPOS_CONFIG = {
          ============================ -->
     <aside id="cart-panel">
         <div class="cart-header">
-            <span>Order</span>
-            <button class="btn-clear-cart" onclick="POS.clearCart()" title="Clear cart">&#10005; Clear</button>
+            <div class="cart-header-copy">
+                <span>Current Order</span>
+                <p id="cart-header-note">Tap a product to start the order.</p>
+            </div>
+            <div class="cart-header-actions">
+                <span id="cart-count-badge" class="cart-count-badge">0 items</span>
+                <button class="btn-clear-cart" onclick="POS.clearCart()" title="Clear cart">&#10005; Clear</button>
+            </div>
         </div>
 
         <div id="cart-items" role="list" aria-label="Cart items">
@@ -178,7 +204,11 @@ const BFPOS_CONFIG = {
         </div>
 
         <button id="btn-pay" class="btn-pay" onclick="POS.openPayment()" disabled>
-            PAY <span id="pay-amount">$0.00</span>
+            <span class="btn-pay-copy">
+                <span class="btn-pay-label">Take Payment</span>
+                <span class="btn-pay-note">Review total and charge the customer</span>
+            </span>
+            <span id="pay-amount">$0.00</span>
         </button>
     </aside>
 
@@ -188,18 +218,51 @@ const BFPOS_CONFIG = {
      PAYMENT MODAL
      ============================================================ -->
 <div id="payment-modal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-label="Payment">
-    <div class="modal-card">
+    <div class="modal-card modal-payment">
         <div class="modal-header">
-            <h2>Payment</h2>
+            <div>
+                <h2>Take Payment</h2>
+                <p class="modal-subtitle">Choose how the customer is paying, confirm the amount, then finish the sale.</p>
+            </div>
             <button class="modal-close" onclick="POS.closePayment()" aria-label="Close">&times;</button>
+        </div>
+
+        <div class="pay-order-summary">
+            <div class="pay-summary-stat">
+                <i data-lucide="shopping-bag" class="pay-summary-icon"></i>
+                <span>Items</span>
+                <strong id="pay-item-count">0 items</strong>
+            </div>
+            <div class="pay-summary-stat">
+                <i data-lucide="wallet-cards" class="pay-summary-icon"></i>
+                <span>Method</span>
+                <strong id="pay-method-label">Cash</strong>
+            </div>
+            <div class="pay-summary-stat">
+                <i data-lucide="keyboard" class="pay-summary-icon"></i>
+                <span>Tip</span>
+                <strong id="pay-method-tip">Enter confirms cash</strong>
+            </div>
         </div>
 
         <!-- Payment method tabs -->
         <div class="pay-tabs">
-            <button class="pay-tab active" data-method="cash" onclick="POS.selectPayMethod('cash')">&#128181; Cash</button>
-            <button class="pay-tab" data-method="card" onclick="POS.selectPayMethod('card')">&#128179; Card</button>
-            <button class="pay-tab" data-method="mobile" onclick="POS.selectPayMethod('mobile')">&#128241; Mobile</button>
-            <button class="pay-tab" data-method="split" onclick="POS.selectPayMethod('split')">&#8644; Split</button>
+            <button class="pay-tab active" data-method="cash" onclick="POS.selectPayMethod('cash')">
+                <i data-lucide="banknote" class="pay-tab-icon"></i>
+                <span>Cash</span>
+            </button>
+            <button class="pay-tab" data-method="card" onclick="POS.selectPayMethod('card')">
+                <i data-lucide="credit-card" class="pay-tab-icon"></i>
+                <span>Card</span>
+            </button>
+            <button class="pay-tab" data-method="mobile" onclick="POS.selectPayMethod('mobile')">
+                <i data-lucide="smartphone" class="pay-tab-icon"></i>
+                <span>Mobile</span>
+            </button>
+            <button class="pay-tab" data-method="split" onclick="POS.selectPayMethod('split')">
+                <i data-lucide="split" class="pay-tab-icon"></i>
+                <span>Split</span>
+            </button>
         </div>
 
         <div class="pay-total-due">
@@ -209,53 +272,66 @@ const BFPOS_CONFIG = {
 
         <!-- CASH panel -->
         <div id="pay-cash" class="pay-panel active">
-            <div class="tender-quick">
-                <button class="tender-btn" onclick="POS.quickTender(1)">$1</button>
-                <button class="tender-btn" onclick="POS.quickTender(2)">$2</button>
-                <button class="tender-btn" onclick="POS.quickTender(5)">$5</button>
-                <button class="tender-btn" onclick="POS.quickTender(10)">$10</button>
-                <button class="tender-btn" onclick="POS.quickTender(20)">$20</button>
-                <button class="tender-btn" onclick="POS.quickTender(50)">$50</button>
-                <button class="tender-btn" onclick="POS.quickTender(100)">$100</button>
-                <button class="tender-btn tender-exact" onclick="POS.quickTender('exact')">Exact</button>
+            <div class="pay-section">
+                <div class="pay-section-head">
+                    <span class="pay-step">Step 1</span>
+                    <h3>Select or enter the cash received</h3>
+                </div>
+                <div id="cash-tender-buttons" class="tender-quick"></div>
             </div>
-            <div class="tender-input-wrap">
-                <label>Cash Tendered</label>
-                <input type="number" id="cash-tendered" min="0" step="0.01" placeholder="0.00"
-                       oninput="POS.calcChange()" onkeydown="POS.payKeydown(event)">
+
+            <div class="pay-section">
+                <div class="tender-input-wrap">
+                    <label>Cash Tendered</label>
+                    <input type="number" id="cash-tendered" min="0" step="0.01" placeholder="0.00"
+                           oninput="POS.calcChange()" onkeydown="POS.payKeydown(event)">
+                    <p class="field-help">Type the amount received if it is not in the quick buttons above.</p>
+                </div>
             </div>
+
             <div class="change-display">
-                <span>Change</span>
+                <div class="change-copy">
+                    <span>Change</span>
+                    <small id="cash-status-note">Enter the amount received to continue.</small>
+                </div>
                 <strong id="change-amount" class="change-ok">$0.00</strong>
             </div>
         </div>
 
         <!-- CARD panel -->
         <div id="pay-card" class="pay-panel hidden">
-            <div class="card-info">
-                <p>Process payment on card terminal for:</p>
+            <div class="pay-callout">
+                <div class="pay-step">Step 1</div>
                 <strong id="card-total">$0.00</strong>
+                <p>Ask the customer to tap, insert, or swipe their card on the terminal.</p>
             </div>
             <div class="tender-input-wrap">
                 <label>Reference / Approval Code (optional)</label>
                 <input type="text" id="card-reference" placeholder="e.g. AUTH123456">
+                <p class="field-help">You can leave this blank if the terminal does not give a reference.</p>
             </div>
         </div>
 
         <!-- MOBILE MONEY panel -->
         <div id="pay-mobile" class="pay-panel hidden">
-            <div class="card-info">
-                <p>Mobile money payment for:</p>
+            <div class="pay-callout">
+                <div class="pay-step">Step 1</div>
                 <strong id="mobile-total">$0.00</strong>
+                <p>Confirm the transfer on the customer phone, then record the reference if provided.</p>
             </div>
             <div class="tender-input-wrap">
                 <label>Transaction Reference (optional)</label>
                 <input type="text" id="mobile-reference" placeholder="e.g. TXN9876543">
+                <p class="field-help">Use the reference from the payment confirmation message when available.</p>
             </div>
         </div>
 
         <!-- SPLIT panel -->
         <div id="pay-split" class="pay-panel hidden">
+            <div class="pay-callout pay-callout-compact">
+                <div class="pay-step">Step 1</div>
+                <p>Enter the cash part first. The remaining balance will auto-fill on the second field.</p>
+            </div>
             <div class="split-row">
                 <div class="tender-input-wrap">
                     <label>Cash Amount</label>
@@ -269,7 +345,10 @@ const BFPOS_CONFIG = {
                 </div>
             </div>
             <div class="change-display">
-                <span>Change from Cash</span>
+                <div class="change-copy">
+                    <span>Change from Cash</span>
+                    <small>The card or mobile amount must cover the remaining balance.</small>
+                </div>
                 <strong id="split-change">$0.00</strong>
             </div>
         </div>

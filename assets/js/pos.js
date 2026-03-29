@@ -17,6 +17,7 @@ const POS = window.POS = (function () {
     let lastReceiptData   = null;
     let pendingBalanceOrder = null; // cake order awaiting balance collection
     let balancePayMethod   = 'cash';
+    let productSearchTerm  = '';
     const cfg = window.BFPOS_CONFIG || {};
     const currency = cfg.currency || '$';
 
@@ -190,13 +191,25 @@ const POS = window.POS = (function () {
         renderProducts(catId);
     }
 
+    function filterProducts(term) {
+        productSearchTerm = String(term || '').trim().toLowerCase();
+        renderProducts(currentCatId || 'quick');
+    }
+
     // ── Product Rendering ───────────────────────────────────────
     function renderProducts(catId) {
         const grid = document.getElementById('product-grid');
+        const search = productSearchTerm;
         grid.innerHTML = '';
 
         let filtered;
-        if (catId === 'quick') {
+        if (search) {
+            filtered = products.filter(p =>
+                String(p.name || '').toLowerCase().includes(search) ||
+                String(p.barcode || '').toLowerCase().includes(search)
+            );
+            filtered = filtered.filter(p => p.price > 0 || p.is_cake);
+        } else if (catId === 'quick') {
             // Show top 10 — for now just show first 10 non-cake, non-zero products
             filtered = products
                 .filter(p => p.price > 0 && !p.is_cake)
@@ -208,8 +221,10 @@ const POS = window.POS = (function () {
             filtered = products.filter(p => String(p.category_id) === String(catId));
         }
 
+        updateProductResults(filtered.length, search);
+
         if (filtered.length === 0) {
-            grid.innerHTML = '<div class="grid-empty">No products in this category.</div>';
+            grid.innerHTML = `<div class="grid-empty">${search ? 'No products match this search.' : 'No products in this category.'}</div>`;
             return;
         }
 
@@ -231,6 +246,18 @@ const POS = window.POS = (function () {
             btn.onclick = () => addToCart(product);
             grid.appendChild(btn);
         });
+    }
+
+    function updateProductResults(count, search) {
+        const label = document.getElementById('product-results-count');
+        if (!label) return;
+
+        if (search) {
+            label.textContent = count === 1 ? '1 product found' : `${count} products found`;
+            return;
+        }
+
+        label.textContent = count === 1 ? '1 product ready to add' : `${count} products ready to add`;
     }
 
     // ── Cart Operations ─────────────────────────────────────────
@@ -294,6 +321,7 @@ const POS = window.POS = (function () {
         const container = document.getElementById('cart-items');
         const empty     = document.getElementById('cart-empty');
         const totals    = calcTotal();
+        const itemCount = cart.reduce((sum, item) => sum + item.qty, 0);
 
         if (cart.length === 0) {
             container.innerHTML = '';
@@ -304,6 +332,7 @@ const POS = window.POS = (function () {
             document.getElementById('pay-amount').textContent     = fmt(0);
             const btn = document.getElementById('btn-pay');
             btn.disabled = true;
+            updateCartMeta(0, false);
             return;
         }
 
@@ -332,6 +361,22 @@ const POS = window.POS = (function () {
         document.getElementById('total-grand').textContent    = fmt(totals.total);
         document.getElementById('pay-amount').textContent     = fmt(totals.total);
         document.getElementById('btn-pay').disabled = false;
+        updateCartMeta(itemCount, true);
+    }
+
+    function updateCartMeta(itemCount, hasItems) {
+        const badge = document.getElementById('cart-count-badge');
+        const note = document.getElementById('cart-header-note');
+
+        if (badge) {
+            badge.textContent = itemCount === 1 ? '1 item' : `${itemCount} items`;
+        }
+
+        if (note) {
+            note.textContent = hasItems
+                ? 'Check quantity, then tap Take Payment.'
+                : 'Tap a product to start the order.';
+        }
     }
 
     function createEmptyEl() {
@@ -357,18 +402,22 @@ const POS = window.POS = (function () {
     function openPayment() {
         if (cart.length === 0) return;
         const totals = calcTotal();
+        const itemCount = cart.reduce((sum, item) => sum + item.qty, 0);
         document.getElementById('pay-due').textContent     = fmt(totals.total);
         document.getElementById('card-total').textContent  = fmt(totals.total);
         document.getElementById('mobile-total').textContent = fmt(totals.total);
+        document.getElementById('pay-item-count').textContent = itemCount === 1 ? '1 item' : `${itemCount} items`;
         document.getElementById('cash-tendered').value     = '';
         document.getElementById('change-amount').textContent = fmt(0);
         document.getElementById('change-amount').className   = 'change-ok';
+        document.getElementById('cash-status-note').textContent = 'Enter the amount received to continue.';
         document.getElementById('split-cash').value  = '';
         document.getElementById('split-card').value  = '';
         document.getElementById('split-change').textContent = fmt(0);
         document.getElementById('card-reference').value   = '';
         document.getElementById('mobile-reference').value = '';
         document.getElementById('btn-confirm-pay').disabled = true;
+        renderTenderButtons(totals.total);
 
         selectPayMethod('cash');
         document.getElementById('payment-modal').classList.remove('hidden');
@@ -387,27 +436,27 @@ const POS = window.POS = (function () {
         document.querySelectorAll('.pay-panel').forEach(p => {
             p.classList.toggle('hidden', !p.id.endsWith(method));
         });
-        document.getElementById('btn-confirm-pay').disabled = (method === 'cash');
+        updatePaymentMethodMeta(method);
 
-        if (method === 'card' || method === 'mobile') {
-            document.getElementById('btn-confirm-pay').disabled = false;
-        }
         if (method === 'cash') {
+            document.getElementById('btn-confirm-pay').disabled = true;
             setTimeout(() => document.getElementById('cash-tendered').focus(), 50);
+        } else if (method === 'card') {
+            document.getElementById('btn-confirm-pay').disabled = false;
+            setTimeout(() => document.getElementById('card-reference').focus(), 50);
+        } else if (method === 'mobile') {
+            document.getElementById('btn-confirm-pay').disabled = false;
+            setTimeout(() => document.getElementById('mobile-reference').focus(), 50);
+        } else {
+            document.getElementById('btn-confirm-pay').disabled = true;
+            setTimeout(() => document.getElementById('split-cash').focus(), 50);
         }
     }
 
     function quickTender(amount) {
-        const totals = calcTotal();
-        const total  = totals.total;
-        let val;
-        if (amount === 'exact') {
-            val = total;
-        } else {
-            // Round up to next note if tendered < total
-            val = amount < total ? total : amount;
-            // Pick smallest note >= total or use given note
-            val = amount;
+        let val = parseFloat(amount || '0');
+        if (!Number.isFinite(val)) {
+            val = calcTotal().total;
         }
         document.getElementById('cash-tendered').value = val.toFixed(2);
         calcChange();
@@ -418,16 +467,76 @@ const POS = window.POS = (function () {
         const tendered = parseFloat(document.getElementById('cash-tendered').value || '0');
         const change   = round2(tendered - totals.total);
         const el       = document.getElementById('change-amount');
+        const note     = document.getElementById('cash-status-note');
 
         if (tendered <= 0 || tendered < totals.total) {
             el.textContent = '−' + fmt(Math.abs(change));
             el.className   = 'change-warn';
+            if (note) {
+                note.textContent = tendered > 0
+                    ? `Need ${fmt(Math.abs(change))} more before confirming.`
+                    : 'Enter the amount received to continue.';
+            }
             document.getElementById('btn-confirm-pay').disabled = true;
         } else {
             el.textContent = fmt(change);
             el.className   = 'change-ok';
+            if (note) {
+                note.textContent = change > 0
+                    ? 'Ready to confirm and give change.'
+                    : 'Exact amount received. Ready to confirm.';
+            }
             document.getElementById('btn-confirm-pay').disabled = false;
         }
+    }
+
+    function renderTenderButtons(total) {
+        const wrap = document.getElementById('cash-tender-buttons');
+        if (!wrap) return;
+
+        const options = getTenderOptions(total);
+        wrap.innerHTML = options.map(amount => {
+            const isExact = Math.abs(amount - total) < 0.001;
+            const cls = isExact ? 'tender-btn tender-exact' : 'tender-btn';
+            const label = isExact ? `Exact ${fmt(amount)}` : fmt(amount);
+            return `<button class="${cls}" type="button" onclick="POS.quickTender(${amount.toFixed(2)})">${label}</button>`;
+        }).join('');
+    }
+
+    function getTenderOptions(total) {
+        const options = [
+            total,
+            Math.ceil(total),
+            Math.ceil(total / 5) * 5,
+            Math.ceil(total / 10) * 10,
+            20,
+            50,
+            100,
+        ];
+
+        if (total > 100) {
+            options.push(Math.ceil(total / 50) * 50);
+        }
+
+        return [...new Set(options.map(n => round2(Math.max(total, n))))].sort((a, b) => a - b).slice(0, 6);
+    }
+
+    function updatePaymentMethodMeta(method) {
+        const label = document.getElementById('pay-method-label');
+        const tip = document.getElementById('pay-method-tip');
+        const button = document.getElementById('btn-confirm-pay');
+
+        const map = {
+            cash:   { label: 'Cash',   tip: 'Enter confirms cash',            button: 'Complete Cash Sale' },
+            card:   { label: 'Card',   tip: 'Confirm after terminal approval', button: 'Confirm Card Payment' },
+            mobile: { label: 'Mobile', tip: 'Record reference if provided',    button: 'Confirm Mobile Payment' },
+            split:  { label: 'Split',  tip: 'Cash first, balance auto-fills',  button: 'Confirm Split Payment' },
+        };
+
+        const meta = map[method] || map.cash;
+        if (label) label.textContent = meta.label;
+        if (tip) tip.textContent = meta.tip;
+        if (button) button.textContent = meta.button;
     }
 
     function calcSplit() {
@@ -515,7 +624,7 @@ const POS = window.POS = (function () {
             _posAlert('Error: ' + err.message);
         } finally {
             btn.disabled   = false;
-            btn.textContent = 'Confirm Payment';
+            updatePaymentMethodMeta(payMethod);
         }
     }
 
@@ -978,6 +1087,11 @@ const POS = window.POS = (function () {
         if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
 
         const tabs = document.querySelectorAll('.cat-tab');
+        if (e.key === '/') {
+            e.preventDefault();
+            document.getElementById('product-search')?.focus();
+            return;
+        }
 
         // F1 = Quick Items, F2–F8 = categories
         if (e.key === 'F1') { e.preventDefault(); tabs[0]?.click(); return; }
@@ -1114,6 +1228,7 @@ const POS = window.POS = (function () {
         openPayment,
         closePayment,
         selectPayMethod,
+        filterProducts,
         quickTender,
         calcChange,
         calcSplit,
