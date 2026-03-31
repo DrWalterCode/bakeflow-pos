@@ -6,6 +6,7 @@ namespace App\Controllers\Admin;
 use App\Controllers\BaseController;
 use App\Core\Auth;
 use App\Core\Database;
+use App\Core\SyncState;
 use App\Core\View;
 
 class ExpenseController extends BaseController
@@ -92,6 +93,7 @@ class ExpenseController extends BaseController
             trim($_POST['notes'] ?? '') ?: null,
         ]);
 
+        SyncState::markDirty($db, 'expenses');
         $this->redirect('/admin/expenses', 'Expense recorded successfully.');
     }
 
@@ -142,6 +144,7 @@ class ExpenseController extends BaseController
             $id,
         ]);
 
+        SyncState::markDirty($db, 'expenses');
         $this->redirect('/admin/expenses', 'Expense updated successfully.');
     }
 
@@ -153,6 +156,7 @@ class ExpenseController extends BaseController
         $db = Database::getConnection();
         $db->prepare("DELETE FROM expenses WHERE id = ?")->execute([(int)$_POST['id']]);
 
+        SyncState::markDirty($db, 'expenses');
         $this->redirect('/admin/expenses', 'Expense deleted.');
     }
 }

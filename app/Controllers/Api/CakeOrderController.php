@@ -7,13 +7,10 @@ use App\Controllers\BaseController;
 use App\Core\Auth;
 use App\Core\Database;
 use App\Core\Env;
+use App\Core\SyncState;
 
 class CakeOrderController extends BaseController
 {
-    /**
-     * List pending cake orders (payment_status = deposit or partial).
-     * GET /api/cake-orders/pending
-     */
     public function pending(): void
     {
         $this->requireAuth();
@@ -22,6 +19,7 @@ class CakeOrderController extends BaseController
 
         $stmt = $db->prepare("
             SELECT co.id, co.pickup_date, co.shape, co.inscription,
+                   co.additional_cost,
                    co.full_price, co.deposit_amount, co.amount_paid,
                    co.balance_due, co.payment_status, co.order_status,
                    co.customer_name, co.customer_phone,
@@ -46,21 +44,18 @@ class CakeOrderController extends BaseController
         $orders = $stmt->fetchAll();
 
         foreach ($orders as &$o) {
-            $o['id']             = (int)$o['id'];
-            $o['full_price']     = (float)$o['full_price'];
+            $o['id'] = (int)$o['id'];
+            $o['additional_cost'] = (float)$o['additional_cost'];
+            $o['full_price'] = (float)$o['full_price'];
             $o['deposit_amount'] = (float)$o['deposit_amount'];
-            $o['amount_paid']    = (float)$o['amount_paid'];
-            $o['balance_due']    = (float)$o['balance_due'];
+            $o['amount_paid'] = (float)$o['amount_paid'];
+            $o['balance_due'] = (float)$o['balance_due'];
         }
         unset($o);
 
         $this->json(['success' => true, 'orders' => $orders]);
     }
 
-    /**
-     * Collect the balance payment for a cake order.
-     * POST /api/cake-orders/{id}/collect-balance
-     */
     public function collectBalance(string $id): void
     {
         $this->requireAuth();
@@ -85,13 +80,13 @@ class CakeOrderController extends BaseController
             $this->jsonError('No balance due on this order.');
         }
 
-        $raw   = file_get_contents('php://input');
+        $raw = file_get_contents('php://input');
         $input = json_decode($raw, true);
 
         $paymentMethod = $input['payment_method'] ?? 'cash';
-        $cashTendered  = (float)($input['cash_tendered']  ?? 0);
-        $cardAmount    = (float)($input['card_amount']    ?? 0);
-        $reference     = trim($input['reference_number']  ?? '');
+        $cashTendered = (float)($input['cash_tendered'] ?? 0);
+        $cardAmount = (float)($input['card_amount'] ?? 0);
+        $reference = trim($input['reference_number'] ?? '');
 
         $allowedMethods = ['cash', 'card', 'mobile'];
         if (!in_array($paymentMethod, $allowedMethods, true)) {
@@ -114,7 +109,7 @@ class CakeOrderController extends BaseController
 
         try {
             $terminalId = Env::get('TERMINAL_ID', 'TXN001');
-            $txnRef     = 'BAL-' . strtoupper(bin2hex(random_bytes(5))) . '-' . time();
+            $txnRef = 'BAL-' . strtoupper(bin2hex(random_bytes(5))) . '-' . time();
 
             $stmt = $db->prepare("
                 INSERT INTO transactions
@@ -138,7 +133,6 @@ class CakeOrderController extends BaseController
             ]);
             $balanceTxnId = (int)$db->lastInsertId();
 
-            // Create a transaction item for the balance
             $db->prepare("
                 INSERT INTO transaction_items
                     (transaction_id, product_id, product_name, unit_price, quantity, line_total)
@@ -150,7 +144,6 @@ class CakeOrderController extends BaseController
                 $balanceDue,
             ]);
 
-            // Update the cake order to fully paid and collected
             $db->prepare("
                 UPDATE cake_orders
                 SET amount_paid = full_price,
@@ -167,23 +160,20 @@ class CakeOrderController extends BaseController
             $this->jsonError('Failed to process balance payment: ' . $e->getMessage(), 500);
         }
 
-        // Build a receipt for the balance payment
+        SyncState::markDirty($db, ['transactions', 'cake_orders']);
+
         $receipt = $this->buildBalanceReceipt($cakeOrderId, $balanceTxnId, $db);
 
         $this->json([
-            'success'         => true,
-            'transaction_id'  => $balanceTxnId,
+            'success' => true,
+            'transaction_id' => $balanceTxnId,
             'transaction_ref' => $txnRef,
-            'total'           => $balanceDue,
-            'change'          => $changeGiven,
-            'receipt'         => $receipt,
+            'total' => $balanceDue,
+            'change' => $changeGiven,
+            'receipt' => $receipt,
         ]);
     }
 
-    /**
-     * Mark a fully-paid cake order as collected (no payment needed).
-     * POST /api/cake-orders/{id}/mark-collected
-     */
     public function markCollected(string $id): void
     {
         $this->requireAuth();
@@ -214,6 +204,7 @@ class CakeOrderController extends BaseController
         $db->prepare("UPDATE cake_orders SET order_status = 'collected' WHERE id = ?")
            ->execute([$cakeOrderId]);
 
+        SyncState::markDirty($db, 'cake_orders');
         $this->json(['success' => true]);
     }
 
@@ -230,7 +221,6 @@ class CakeOrderController extends BaseController
 
         $shop = $db->query("SELECT * FROM shops WHERE id = 1 LIMIT 1")->fetch();
 
-        // Get the cake order details
         $co = $db->prepare("
             SELECT co.*, cf.name AS flavour_name, cs.name AS size_name
             FROM cake_orders co
@@ -243,41 +233,44 @@ class CakeOrderController extends BaseController
 
         $items = [[
             'product_name' => 'Cake Balance Payment',
-            'qty'          => 1,
-            'unit_price'   => (float)$transaction['total'],
-            'line_total'   => (float)$transaction['total'],
-            'cake'         => [
-                'flavour_name'   => $cakeOrder['flavour_name'] ?? null,
-                'size_name'      => $cakeOrder['size_name'] ?? null,
-                'shape'          => $cakeOrder['shape'] ?? null,
-                'inscription'    => $cakeOrder['inscription'] ?? null,
-                'pickup_date'    => $cakeOrder['pickup_date'] ?? null,
+            'qty' => 1,
+            'unit_price' => (float)$transaction['total'],
+            'line_total' => (float)$transaction['total'],
+            'cake' => [
+                'flavour_name' => $cakeOrder['flavour_name'] ?? null,
+                'size_name' => $cakeOrder['size_name'] ?? null,
+                'shape' => $cakeOrder['shape'] ?? null,
+                'inscription' => $cakeOrder['inscription'] ?? null,
+                'pickup_date' => $cakeOrder['pickup_date'] ?? null,
+                'additional_cost' => (float)($cakeOrder['additional_cost'] ?? 0),
                 'payment_status' => 'paid',
-                'full_price'     => (float)$cakeOrder['full_price'],
-                'deposit_paid'   => (float)$cakeOrder['deposit_amount'],
-                'balance_due'    => 0.0,
-                'customer_name'  => $cakeOrder['customer_name'] ?? null,
+                'full_price' => (float)$cakeOrder['full_price'],
+                'deposit_paid' => (float)$cakeOrder['deposit_amount'],
+                'balance_due' => 0.0,
+                'customer_name' => $cakeOrder['customer_name'] ?? null,
             ],
         ]];
 
         return [
-            'transaction_id'  => $txnId,
+            'transaction_id' => $txnId,
             'transaction_ref' => $transaction['transaction_ref'],
-            'created_at'      => $transaction['created_at'],
-            'cashier_name'    => $transaction['cashier_name'],
-            'shop_name'       => $shop['name']           ?? '',
-            'shop_address'    => $shop['address']        ?? '',
-            'shop_phone'      => $shop['phone']          ?? '',
-            'receipt_footer'  => $shop['receipt_footer'] ?? 'Thank you!',
-            'subtotal'        => (float)$transaction['subtotal'],
-            'discount'        => (float)$transaction['discount'],
-            'total'           => (float)$transaction['total'],
-            'payment_method'  => $transaction['payment_method'],
-            'cash_tendered'   => (float)$transaction['cash_tendered'],
-            'change_given'    => (float)$transaction['change_given'],
-            'card_amount'     => (float)$transaction['card_amount'],
-            'reference_number'=> $transaction['reference_number'],
-            'items'           => $items,
+            'created_at' => $transaction['created_at'],
+            'cashier_name' => $transaction['cashier_name'],
+            'shop_name' => $shop['name'] ?? '',
+            'shop_address' => $shop['address'] ?? '',
+            'shop_phone' => $shop['phone'] ?? '',
+            'shop_email' => $shop['email'] ?? '',
+            'receipt_header' => $shop['receipt_header'] ?? '',
+            'receipt_footer' => $shop['receipt_footer'] ?? 'Thank you!',
+            'subtotal' => (float)$transaction['subtotal'],
+            'discount' => (float)$transaction['discount'],
+            'total' => (float)$transaction['total'],
+            'payment_method' => $transaction['payment_method'],
+            'cash_tendered' => (float)$transaction['cash_tendered'],
+            'change_given' => (float)$transaction['change_given'],
+            'card_amount' => (float)$transaction['card_amount'],
+            'reference_number' => $transaction['reference_number'],
+            'items' => $items,
         ];
     }
 }

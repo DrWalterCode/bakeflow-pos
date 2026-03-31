@@ -15,8 +15,10 @@ use App\Controllers\Admin\ProductionController;
 use App\Controllers\Api\ProductsController;
 use App\Controllers\Api\SaleController;
 use App\Controllers\Api\ReceiptController;
+use App\Controllers\Api\PrinterController;
 use App\Controllers\Api\SyncController;
 use App\Controllers\Api\CakeOrderController;
+use App\Controllers\Api\DayEndReportController;
 use App\Controllers\Admin\CakeOrderController as AdminCakeOrderController;
 
 // -----------------------------------------------------------------
@@ -71,6 +73,8 @@ Router::get('/admin/cake-orders/print-slip',          [AdminCakeOrderController:
 
 Router::get('/admin/reports',          [ReportsController::class, 'index']);
 Router::get('/admin/reports/daily',    [ReportsController::class, 'daily']);
+Router::post('/admin/reports/daily/close',  [ReportsController::class, 'closeDay']);
+Router::post('/admin/reports/daily/reopen', [ReportsController::class, 'reopenDay']);
 Router::get('/admin/reports/products', [ReportsController::class, 'products']);
 Router::get('/admin/reports/cashiers', [ReportsController::class, 'cashiers']);
 
@@ -80,9 +84,14 @@ Router::get('/admin/reports/cashiers', [ReportsController::class, 'cashiers']);
 Router::get('/api/products',         [ProductsController::class, 'index']);
 Router::post('/api/sale',            [SaleController::class, 'store']);
 Router::get('/api/receipt/{id}',     [ReceiptController::class, 'show']);
+Router::post('/api/print/receipt',   [PrinterController::class, 'printReceipt']);
+Router::post('/api/print/cake-order-slip', [PrinterController::class, 'printCakeOrderSlip']);
 Router::get('/api/sync/status',      [SyncController::class, 'status']);
 Router::post('/api/sync/push',       [SyncController::class, 'push']);
 Router::get('/api/cake-orders/pending',              [CakeOrderController::class, 'pending']);
 Router::post('/api/cake-orders/{id}/collect-balance', [CakeOrderController::class, 'collectBalance']);
 Router::post('/api/cake-orders/{id}/mark-collected',  [CakeOrderController::class, 'markCollected']);
 Router::post('/api/auth/heartbeat',  [AuthController::class, 'heartbeat']);
+Router::get('/api/reports/day-end',  [DayEndReportController::class, 'show']);
+Router::post('/api/reports/day-end/close',  [DayEndReportController::class, 'close']);
+Router::post('/api/reports/day-end/reopen', [DayEndReportController::class, 'reopen']);

@@ -187,8 +187,15 @@ $authUser     = Auth::user();
         /* ── Page background ── */
         .page-wrapper {
             background: #FAF5F2 !important;
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
         }
-        .page-content { background: transparent; }
+        .page-content {
+            background: transparent;
+            flex: 1 0 auto;
+        }
+        .footer { margin-top: auto; }
 
         /* ── Primary buttons ── */
         .btn-primary {

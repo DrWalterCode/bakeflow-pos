@@ -63,6 +63,8 @@ CREATE TABLE IF NOT EXISTS products (
     is_active      TINYINT(1)   NOT NULL DEFAULT 1,
     is_cake        TINYINT(1)   NOT NULL DEFAULT 0,
     stock_quantity INT          NOT NULL DEFAULT 0,
+    is_quick_item  TINYINT(1)   NOT NULL DEFAULT 0,
+    quick_item_order INT        NOT NULL DEFAULT 0,
     sort_order     INT          NOT NULL DEFAULT 0,
     created_at     DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE RESTRICT
@@ -147,6 +149,7 @@ CREATE TABLE IF NOT EXISTS cake_orders (
     inscription             VARCHAR(500) NULL,
     pickup_date             DATE         NULL,
     notes                   TEXT         NULL,
+    additional_cost         DECIMAL(10,2) NOT NULL DEFAULT 0,
     full_price              DECIMAL(10,2) NOT NULL DEFAULT 0,
     deposit_amount          DECIMAL(10,2) NOT NULL DEFAULT 0,
     amount_paid             DECIMAL(10,2) NOT NULL DEFAULT 0,
@@ -166,6 +169,19 @@ CREATE TABLE IF NOT EXISTS cake_orders (
 CREATE INDEX idx_cake_orders_status       ON cake_orders(payment_status);
 CREATE INDEX idx_cake_orders_pickup       ON cake_orders(pickup_date);
 CREATE INDEX idx_cake_orders_order_status ON cake_orders(order_status);
+
+-- -----------------------------------------------------
+-- sync_state
+-- -----------------------------------------------------
+CREATE TABLE IF NOT EXISTS sync_state (
+    table_name        VARCHAR(100) PRIMARY KEY,
+    is_dirty          TINYINT(1)   NOT NULL DEFAULT 1,
+    last_synced_at    DATETIME     NULL,
+    last_attempted_at DATETIME     NULL,
+    last_synced_count INT          NOT NULL DEFAULT 0,
+    last_error        TEXT         NULL,
+    updated_at        DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- -----------------------------------------------------
 -- sync_log
@@ -199,8 +215,13 @@ CREATE TABLE IF NOT EXISTS daily_closings (
     expected_cash DECIMAL(10,2) NOT NULL DEFAULT 0,
     actual_cash   DECIMAL(10,2) NOT NULL DEFAULT 0,
     difference    DECIMAL(10,2) GENERATED ALWAYS AS (actual_cash - expected_cash) STORED,
+    status        ENUM('open','closed') NOT NULL DEFAULT 'closed',
     notes         TEXT          NULL,
     closed_at     DATETIME      NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    report_snapshot LONGTEXT    NULL,
+    reopened_by   INT           NULL,
+    reopened_at   DATETIME      NULL,
+    reopen_reason TEXT          NULL,
     FOREIGN KEY (cashier_id) REFERENCES users(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 

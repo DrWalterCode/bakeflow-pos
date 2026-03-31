@@ -35,6 +35,14 @@ abstract class BaseController
         }
     }
 
+    protected function verifyJsonCsrf(): void
+    {
+        $token = $_SERVER['HTTP_X_CSRF_TOKEN'] ?? '';
+        if (!Session::verifyCsrfToken($token)) {
+            $this->jsonError('Invalid CSRF token.', 403);
+        }
+    }
+
     protected function redirect(string $url, string $message = '', string $type = 'success'): void
     {
         if ($message) {
