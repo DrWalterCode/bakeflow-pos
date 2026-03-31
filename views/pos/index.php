@@ -14,8 +14,11 @@ window.BFPOS_CONFIG = {
     csrfToken:      '<?= htmlspecialchars($csrfToken, ENT_QUOTES, 'UTF-8') ?>',
     cashierName:    '<?= htmlspecialchars($user['name'], ENT_QUOTES, 'UTF-8') ?>',
     cashierId:      <?= (int)$user['id'] ?>,
+    userRole:       '<?= htmlspecialchars((string)($user['role'] ?? 'cashier'), ENT_QUOTES, 'UTF-8') ?>',
+    isAdmin:        <?= !empty($isAdmin) ? 'true' : 'false' ?>,
     terminalId:     '<?= htmlspecialchars($terminalId, ENT_QUOTES, 'UTF-8') ?>',
     currency:       '<?= htmlspecialchars($currencySymbol, ENT_QUOTES, 'UTF-8') ?>',
+    businessDate:   '<?= htmlspecialchars($businessDate, ENT_QUOTES, 'UTF-8') ?>',
     idleTimeout:    <?= $idleTimeout ?>,
     primaryColor:   '<?= htmlspecialchars($shop['primary_color'] ?? '#E8631A', ENT_QUOTES, 'UTF-8') ?>',
     shopName:       '<?= htmlspecialchars($shop['name'], ENT_QUOTES, 'UTF-8') ?>',
@@ -44,6 +47,10 @@ window.BFPOS_CONFIG = {
         </button>
     </div>
 </header>
+
+<div id="day-closed-banner" class="hidden" style="background:#fff4d6;border-bottom:1px solid rgba(0,0,0,0.08);padding:10px 18px;color:#7a5a00;font-size:0.92rem;">
+    Day closed.
+</div>
 
 <!-- Slide-out menu -->
 <div id="pos-menu" class="pos-menu hidden" role="dialog" aria-modal="true" aria-labelledby="pos-menu-title" aria-hidden="true">
@@ -552,6 +559,33 @@ window.BFPOS_CONFIG = {
         <div class="modal-footer">
             <button class="btn-cancel" onclick="POS.closeBalancePayment()">Cancel</button>
             <button class="btn-add-cake" id="btn-confirm-balance" onclick="POS.confirmBalancePayment()">Confirm Payment</button>
+        </div>
+    </div>
+</div>
+
+<!-- ============================================================
+     END OF DAY MODAL
+     ============================================================ -->
+<div id="endday-modal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-label="End of Day">
+    <div class="modal-card" style="max-width: 980px;">
+        <div class="modal-header">
+            <div>
+                <h2>End of Day</h2>
+                <p class="modal-subtitle">Review today&apos;s sales, expenses, stock movement, and close the business date.</p>
+            </div>
+            <button class="modal-close" onclick="POS.closeEndDay()" aria-label="Close">&times;</button>
+        </div>
+        <div id="endday-content" style="padding: 16px 20px; max-height: 70vh; overflow-y: auto;">
+            <div class="grid-loading">Loading report...</div>
+        </div>
+        <div class="modal-footer" style="justify-content: space-between; gap: 12px; flex-wrap: wrap;">
+            <div id="endday-status-note" style="font-size: 0.85rem; color: var(--text-muted);"></div>
+            <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                <button class="btn-cancel" onclick="POS.closeEndDay()">Close</button>
+                <button class="btn-print" id="btn-print-endday" onclick="POS.printEndDay()">Print Day Slip</button>
+                <button class="btn-cancel hidden" id="btn-reopen-endday" onclick="POS.reopenEndDay()">Reopen Day</button>
+                <button class="btn-add-cake hidden" id="btn-close-endday" onclick="POS.finalizeEndDay()">Close Day</button>
+            </div>
         </div>
     </div>
 </div>

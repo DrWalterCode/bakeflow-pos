@@ -628,6 +628,25 @@ html, body {
     border-color: var(--accent);
 }
 
+.product-btn.is-out-of-stock,
+.product-btn.is-out-of-stock:disabled {
+    background: rgba(148, 163, 184, 0.12);
+    border-color: rgba(148, 163, 184, 0.28);
+    box-shadow: none;
+    cursor: not-allowed;
+    opacity: 0.72;
+}
+
+.product-btn.is-out-of-stock:hover,
+.product-btn.is-out-of-stock:active,
+.product-btn.is-out-of-stock:disabled:hover,
+.product-btn.is-out-of-stock:disabled:active {
+    background: rgba(148, 163, 184, 0.12);
+    border-color: rgba(148, 163, 184, 0.28);
+    box-shadow: none;
+    transform: none;
+}
+
 .product-btn .prod-name {
     font-size: 0.92rem;
     font-weight: 700;
@@ -651,6 +670,22 @@ html, body {
     color: var(--accent);
     border-radius: 4px;
     padding: 1px 4px;
+}
+
+.product-btn .prod-stock-badge {
+    position: absolute;
+    top: 4px;
+    left: 4px;
+    font-size: 0.65rem;
+    background: rgba(192, 57, 43, 0.14);
+    color: var(--danger);
+    border-radius: 4px;
+    padding: 1px 6px;
+}
+
+.product-btn.is-out-of-stock .prod-name,
+.product-btn.is-out-of-stock .prod-price {
+    color: var(--text-muted);
 }
 
 .product-btn.no-price .prod-price {

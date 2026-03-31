@@ -21,7 +21,7 @@ class ProductsController extends BaseController
 
         // Products
         $products = $db->query(
-            "SELECT id, category_id, name, price, barcode, is_cake, is_quick_item, quick_item_order, sort_order
+            "SELECT id, category_id, name, price, barcode, is_cake, stock_quantity, is_quick_item, quick_item_order, sort_order
              FROM products
              WHERE is_active = 1
              ORDER BY category_id, sort_order, name"
@@ -33,6 +33,7 @@ class ProductsController extends BaseController
             $p['category_id'] = (int)$p['category_id'];
             $p['price']            = (float)$p['price'];
             $p['is_cake']          = (bool)$p['is_cake'];
+            $p['stock_quantity']   = (int)$p['stock_quantity'];
             $p['is_quick_item']    = (bool)$p['is_quick_item'];
             $p['quick_item_order'] = (int)$p['quick_item_order'];
             $p['sort_order']       = (int)$p['sort_order'];

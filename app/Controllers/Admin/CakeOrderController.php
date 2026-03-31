@@ -5,6 +5,7 @@ namespace App\Controllers\Admin;
 
 use App\Controllers\BaseController;
 use App\Core\Database;
+use App\Core\SyncState;
 use App\Core\View;
 
 class CakeOrderController extends BaseController
@@ -47,7 +48,6 @@ class CakeOrderController extends BaseController
         $stmt->execute($params);
         $orders = $stmt->fetchAll();
 
-        // Summary counts
         $counts = $db->query("
             SELECT order_status, COUNT(*) AS cnt
             FROM cake_orders
@@ -85,6 +85,7 @@ class CakeOrderController extends BaseController
         $db->prepare("UPDATE cake_orders SET order_status = 'in_production' WHERE id = ?")
            ->execute([$id]);
 
+        SyncState::markDirty($db, 'cake_orders');
         $this->redirect('/admin/cake-orders', 'Order #' . $id . ' moved to production.');
     }
 
@@ -110,6 +111,7 @@ class CakeOrderController extends BaseController
         $db->prepare("UPDATE cake_orders SET order_status = 'ready' WHERE id = ?")
            ->execute([$id]);
 
+        SyncState::markDirty($db, 'cake_orders');
         $this->redirect('/admin/cake-orders', 'Order #' . $id . ' marked as ready for collection.');
     }
 

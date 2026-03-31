@@ -180,10 +180,12 @@
                                 </td>
                                 <td>
                                     <div class="d-flex gap-1 flex-nowrap">
-                                        <a href="/admin/cake-orders/print-slip?id=<?= (int)$order['id'] ?>" target="_blank"
-                                           class="btn btn-sm btn-outline-secondary" title="Print Slip">
+                                        <button type="button"
+                                           class="btn btn-sm btn-outline-secondary"
+                                           title="Print Slip"
+                                           onclick="printCakeProductionSlip(<?= (int)$order['id'] ?>, '/admin/cake-orders/print-slip?id=<?= (int)$order['id'] ?>', this)">
                                             <i data-lucide="printer" style="width:14px;height:14px"></i>
-                                        </a>
+                                        </button>
 
                                         <?php if ($order['order_status'] === 'pending'): ?>
                                         <button type="button" class="btn btn-sm btn-info text-white" title="Start Production"
@@ -234,6 +236,38 @@ function markReady(id, details) {
         document.getElementById('mark-ready-id').value = id;
         document.getElementById('mark-ready-form').submit();
     });
+}
+
+async function printCakeProductionSlip(id, fallbackUrl, button) {
+    if (button) {
+        button.disabled = true;
+    }
+
+    try {
+        var response = await fetch('/api/print/cake-order-slip', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json'
+            },
+            body: JSON.stringify({ cake_order_id: id })
+        });
+
+        var data = await response.json();
+        if (!response.ok || !data.success) {
+            throw new Error(data.error || 'Printer did not accept the production slip.');
+        }
+
+        bfAlert('Production slip printed' + (data.printer_name ? ' on ' + data.printer_name : '') + '.');
+    } catch (error) {
+        console.error('Cake production slip print failed:', error);
+        bfAlert('Direct print failed. Opening the browser print page instead.');
+        window.location.assign(fallbackUrl);
+    } finally {
+        if (button) {
+            button.disabled = false;
+        }
+    }
 }
 </script>
 JS;

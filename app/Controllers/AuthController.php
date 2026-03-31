@@ -6,6 +6,7 @@ namespace App\Controllers;
 use App\Core\Auth;
 use App\Core\Database;
 use App\Core\Session;
+use App\Core\SyncState;
 use App\Core\View;
 
 class AuthController extends BaseController
@@ -27,7 +28,7 @@ class AuthController extends BaseController
         $this->verifyCsrf();
 
         $username = trim($_POST['username'] ?? '');
-        $pin      = $_POST['pin']      ?? '';
+        $pin = $_POST['pin'] ?? '';
         $password = $_POST['password'] ?? '';
 
         if ($username === '') {
@@ -36,7 +37,7 @@ class AuthController extends BaseController
             exit;
         }
 
-        $db   = Database::getConnection();
+        $db = Database::getConnection();
         $stmt = $db->prepare("SELECT * FROM users WHERE username = ? AND is_active = 1 LIMIT 1");
         $stmt->execute([$username]);
         $user = $stmt->fetch();
@@ -47,7 +48,6 @@ class AuthController extends BaseController
             exit;
         }
 
-        // Check lockout
         if ($user['pin_locked_until'] !== null) {
             $lockedUntil = strtotime($user['pin_locked_until']);
             if (time() < $lockedUntil) {
@@ -58,30 +58,28 @@ class AuthController extends BaseController
             }
         }
 
-        // Determine login method
         $authenticated = false;
 
         if ($user['role'] === 'admin' && $password !== '') {
-            // Admin uses full password
             $authenticated = ($user['password_hash'] !== null &&
                               password_verify($password, $user['password_hash']));
         } elseif ($pin !== '') {
-            // Cashier/admin PIN login
             $authenticated = ($user['pin_hash'] !== null &&
                               password_verify($pin, $user['pin_hash']));
         }
 
         if (!$authenticated) {
-            // Increment fail count
             $fails = (int)$user['pin_fail_count'] + 1;
             if ($fails >= 5) {
                 $lockUntil = date('Y-m-d H:i:s', strtotime('+15 minutes'));
                 $db->prepare("UPDATE users SET pin_fail_count = ?, pin_locked_until = ? WHERE id = ?")
                    ->execute([$fails, $lockUntil, $user['id']]);
+                SyncState::markDirty($db, 'users');
                 Session::flash('error', 'Too many failed attempts. Account locked for 15 minutes.');
             } else {
                 $db->prepare("UPDATE users SET pin_fail_count = ? WHERE id = ?")
                    ->execute([$fails, $user['id']]);
+                SyncState::markDirty($db, 'users');
                 $remaining = 5 - $fails;
                 Session::flash('error', "Invalid credentials. {$remaining} attempt(s) remaining.");
             }
@@ -89,9 +87,9 @@ class AuthController extends BaseController
             exit;
         }
 
-        // Reset fail count, record login
         $db->prepare("UPDATE users SET pin_fail_count = 0, pin_locked_until = NULL, last_login_at = NOW() WHERE id = ?")
            ->execute([$user['id']]);
+        SyncState::markDirty($db, 'users');
 
         Auth::loginUser($user);
 

@@ -44,7 +44,7 @@ class Database
 
         // Run pending migrations on every connect.
         // For fresh databases, $isNew tells migrate() to just mark all
-        // migrations as applied (schema.sql is already up to date).
+        // migrations as applied because the base MySQL schema is already current.
         self::migrate($isNew);
 
         return self::$pdo;
@@ -92,9 +92,9 @@ class Database
      * The migrations table tracks which files have already been applied,
      * so each migration runs exactly once — even on repeated server starts.
      *
-     * @param bool $freshDb  True when schema.sql just ran (fresh install).
-     *                       In that case we skip executing the SQL (schema
-     *                       is already current) and just mark them applied.
+     * @param bool $freshDb  True when the base MySQL schema just ran (fresh install).
+     *                       In that case we skip executing the migration SQL and
+     *                       just mark the files as applied.
      */
     private static function migrate(bool $freshDb = false): void
     {
@@ -132,7 +132,7 @@ class Database
                 continue; // already applied
             }
 
-            // On fresh databases schema.sql already has everything,
+            // On fresh databases the base schema already has everything,
             // so we just record the migration without executing it.
             if (!$freshDb) {
                 $sql = file_get_contents($file);
@@ -152,8 +152,7 @@ class Database
                     try {
                         self::$pdo->exec($stmt_sql);
                     } catch (PDOException $e) {
-                        // Tolerate "duplicate column" from ALTER TABLE
-                        // MySQL: "Duplicate column name", SQLite: "duplicate column"
+                        // Tolerate duplicate-column ALTER TABLE retries.
                         if (stripos($e->getMessage(), 'duplicate column') !== false
                             || stripos($e->getMessage(), 'Duplicate column name') !== false) {
                             continue;

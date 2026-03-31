@@ -95,6 +95,7 @@
                     <div class="mb-3">
                         <label class="form-label">Sort Order</label>
                         <input type="number" name="sort_order" class="form-control" value="0">
+                        <div class="form-text">Lower numbers appear first inside the product category. This also breaks ties when two quick-access items share the same position.</div>
                     </div>
                     <div class="row">
                         <div class="col-md-6 mb-3">
@@ -102,10 +103,12 @@
                                 <input class="form-check-input" type="checkbox" name="is_quick_item" id="addQuickItem">
                                 <label class="form-check-label" for="addQuickItem">Show in Quick Access</label>
                             </div>
+                            <div class="form-text">Adds this product to the first POS tab labelled Quick Items.</div>
                         </div>
                         <div class="col-md-6 mb-3">
                             <label class="form-label">Quick Access Order</label>
                             <input type="number" name="quick_item_order" class="form-control" min="0" value="0">
+                            <div class="form-text">Lower numbers appear first. Leave as <strong>0</strong> to place it at the end automatically. If the number already exists, BakeFlow moves the other items down.</div>
                         </div>
                     </div>
                     <div class="row">
@@ -167,6 +170,7 @@
                     <div class="mb-3">
                         <label class="form-label">Sort Order</label>
                         <input type="number" name="sort_order" id="edit-sort" class="form-control" value="0">
+                        <div class="form-text">Lower numbers appear first inside the product category. This also breaks ties when two quick-access items share the same position.</div>
                     </div>
                     <div class="row">
                         <div class="col-md-6 mb-3">
@@ -174,10 +178,12 @@
                                 <input class="form-check-input" type="checkbox" name="is_quick_item" id="edit-quick-item">
                                 <label class="form-check-label" for="edit-quick-item">Show in Quick Access</label>
                             </div>
+                            <div class="form-text">Adds this product to the first POS tab labelled Quick Items.</div>
                         </div>
                         <div class="col-md-6 mb-3">
                             <label class="form-label">Quick Access Order</label>
                             <input type="number" name="quick_item_order" id="edit-quick-order" class="form-control" min="0" value="0">
+                            <div class="form-text">Lower numbers appear first. Leave as <strong>0</strong> to place it at the end automatically. If the number already exists, BakeFlow moves the other items down.</div>
                         </div>
                     </div>
                     <div class="row">

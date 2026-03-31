@@ -18,8 +18,11 @@ const POS = window.POS = (function () {
     let pendingBalanceOrder = null; // cake order awaiting balance collection
     let balancePayMethod   = 'cash';
     let productSearchTerm  = '';
+    let dayEndReport       = null;
+    let isDayClosed        = false;
     const cfg = window.BFPOS_CONFIG || {};
     const currency = cfg.currency || '$';
+    const businessDate = cfg.businessDate || new Date().toISOString().slice(0, 10);
     const RECEIPT_PAPER_WIDTH_MM = 72;
     const RECEIPT_CONTENT_WIDTH_MM = 70;
     const RECEIPT_PRINT_PADDING_MM = 2;
@@ -132,8 +135,8 @@ const POS = window.POS = (function () {
     }
 
     // ── Product Loading ─────────────────────────────────────────
-    const CACHE_KEY = 'bfpos_products_cache_v2';
-    const CACHE_TS  = 'bfpos_products_ts_v2';
+    const CACHE_KEY = 'bfpos_products_cache_v3';
+    const CACHE_TS  = 'bfpos_products_ts_v3';
     const CACHE_TTL = (cfg.cacheTtl || 300) * 1000; // ms
 
     async function loadProducts(forceRefresh = false) {
@@ -146,7 +149,7 @@ const POS = window.POS = (function () {
                 products   = data.products   || [];
                 categories = data.categories || [];
                 renderCategories();
-                return;
+                // Render cached data first, then refresh from the server.
             }
         } catch (e) { /* ignore */ }
 
@@ -227,12 +230,13 @@ const POS = window.POS = (function () {
                 String(p.name || '').toLowerCase().includes(search) ||
                 String(p.barcode || '').toLowerCase().includes(search)
             );
-            filtered = filtered.filter(p => !p.is_cake || p.price > 0);
         } else if (catId === 'quick') {
             filtered = products
-                .filter(p => p.is_quick_item && !p.is_cake)
+                .filter(p => p.is_quick_item)
                 .sort((a, b) => {
-                    const quickOrder = (a.quick_item_order || 0) - (b.quick_item_order || 0);
+                    const aQuickOrder = (a.quick_item_order || 0) > 0 ? (a.quick_item_order || 0) : Number.MAX_SAFE_INTEGER;
+                    const bQuickOrder = (b.quick_item_order || 0) > 0 ? (b.quick_item_order || 0) : Number.MAX_SAFE_INTEGER;
+                    const quickOrder = aQuickOrder - bQuickOrder;
                     if (quickOrder !== 0) {
                         return quickOrder;
                     }
@@ -260,21 +264,30 @@ const POS = window.POS = (function () {
         }
 
         filtered.forEach(product => {
+            const stock = getProductStock(product);
+            const isOutOfStock = !product.is_cake && stock !== null && stock <= 0;
             const btn = document.createElement('button');
             btn.className = 'product-btn' +
                             (product.is_cake ? ' is-cake' : '') +
+                            (isOutOfStock ? ' is-out-of-stock' : '') +
                             (product.price === 0 ? ' no-price' : '');
             btn.setAttribute('role', 'listitem');
             btn.setAttribute('aria-label', product.name);
+            btn.type = 'button';
+            btn.disabled = isOutOfStock;
+            btn.setAttribute('aria-disabled', isOutOfStock ? 'true' : 'false');
 
             btn.innerHTML = `
+                ${isOutOfStock ? '<span class="prod-stock-badge">Out of stock</span>' : ''}
                 ${product.is_cake ? '<span class="prod-cake-badge">custom</span>' : ''}
                 ${getProductIcon(product)}
                 <span class="prod-name">${escHtml(product.name)}</span>
                 <span class="prod-price">${product.price > 0 ? fmt(product.price) : 'Custom'}</span>
             `;
 
-            btn.onclick = () => addToCart(product);
+            if (!isOutOfStock) {
+                btn.onclick = () => addToCart(product);
+            }
             grid.appendChild(btn);
         });
     }
@@ -292,7 +305,48 @@ const POS = window.POS = (function () {
     }
 
     // ── Cart Operations ─────────────────────────────────────────
+    function getProductById(productId) {
+        return products.find(product => Number(product.id) === Number(productId)) || null;
+    }
+
+    function getProductStock(product) {
+        const stock = Number.parseInt(product?.stock_quantity, 10);
+        return Number.isFinite(stock) ? stock : null;
+    }
+
+    function getCartQuantity(productId, excludeIndex = null) {
+        return cart.reduce((total, item, index) => {
+            if (excludeIndex !== null && index === excludeIndex) {
+                return total;
+            }
+            if (item.is_cake || Number(item.id) !== Number(productId)) {
+                return total;
+            }
+            return total + Number(item.qty || 0);
+        }, 0);
+    }
+
+    function getStockConflictMessage(product, requestedQty) {
+        const stock = getProductStock(product);
+        if (stock === null || product.is_cake) {
+            return '';
+        }
+        if (stock <= 0) {
+            return `${product.name} is out of stock.`;
+        }
+        if (requestedQty > stock) {
+            return `Only ${stock} left for ${product.name}.`;
+        }
+        return '';
+    }
+
     function addToCart(product) {
+        if (!ensureDayOpen()) {
+            return;
+        }
+
+        product = getProductById(product.id) || product;
+
         if (product.is_cake) {
             openCakeModal(product);
             return;
@@ -300,6 +354,13 @@ const POS = window.POS = (function () {
 
         if (Number(product.price || 0) <= 0) {
             _posAlert(`Set a price for "${product.name}" in Admin > Products before selling it.`);
+            return;
+        }
+
+        const requestedQty = getCartQuantity(product.id) + 1;
+        const stockConflict = getStockConflictMessage(product, requestedQty);
+        if (stockConflict) {
+            _posAlert(stockConflict);
             return;
         }
 
@@ -327,11 +388,30 @@ const POS = window.POS = (function () {
     }
 
     function updateQty(index, delta) {
-        cart[index].qty += delta;
-        if (cart[index].qty <= 0) {
+        if (!ensureDayOpen()) {
+            return;
+        }
+
+        const item = cart[index];
+        if (!item) {
+            return;
+        }
+
+        if (delta > 0 && !item.is_cake) {
+            const product = getProductById(item.id) || item;
+            const requestedQty = getCartQuantity(item.id, index) + item.qty + delta;
+            const stockConflict = getStockConflictMessage(product, requestedQty);
+            if (stockConflict) {
+                _posAlert(stockConflict);
+                return;
+            }
+        }
+
+        item.qty += delta;
+        if (item.qty <= 0) {
             cart.splice(index, 1);
         } else {
-            cart[index].line_total = round2(cart[index].qty * cart[index].price);
+            item.line_total = round2(item.qty * item.price);
         }
         renderCart();
     }
@@ -353,6 +433,52 @@ const POS = window.POS = (function () {
         return Math.round(n * 100) / 100;
     }
 
+    function getDayClosedMessage() {
+        return `The business day ${businessDate} has already been closed. Ask an admin to reopen it before recording more transactions.`;
+    }
+
+    function ensureDayOpen(showAlert = true) {
+        if (!isDayClosed) {
+            return true;
+        }
+
+        if (showAlert) {
+            _posAlert(getDayClosedMessage());
+        }
+
+        return false;
+    }
+
+    function syncDayLockUi() {
+        const banner = document.getElementById('day-closed-banner');
+        const btnPay = document.getElementById('btn-pay');
+        const note = document.getElementById('cart-header-note');
+
+        if (banner) {
+            if (isDayClosed) {
+                const closedBy = dayEndReport && dayEndReport.closure && dayEndReport.closure.closed_by_name
+                    ? ` Closed by ${dayEndReport.closure.closed_by_name}.`
+                    : '';
+                banner.textContent = `Day ${businessDate} is closed. New sales are locked.${closedBy}`;
+                banner.classList.remove('hidden');
+            } else {
+                banner.classList.add('hidden');
+            }
+        }
+
+        if (btnPay) {
+            btnPay.disabled = isDayClosed || cart.length === 0;
+        }
+
+        if (note && isDayClosed) {
+            note.textContent = 'Day closed. Admin must reopen the date before taking more payment.';
+        } else if (note && cart.length === 0) {
+            note.textContent = 'Tap a product to start the order.';
+        } else if (note) {
+            note.textContent = 'Check quantity, then tap Take Payment.';
+        }
+    }
+
     // ── Cart Rendering ──────────────────────────────────────────
     function renderCart() {
         const container = document.getElementById('cart-items');
@@ -370,6 +496,7 @@ const POS = window.POS = (function () {
             const btn = document.getElementById('btn-pay');
             btn.disabled = true;
             updateCartMeta(0, false);
+            syncDayLockUi();
             return;
         }
 
@@ -397,8 +524,8 @@ const POS = window.POS = (function () {
         document.getElementById('total-subtotal').textContent = fmt(totals.subtotal);
         document.getElementById('total-grand').textContent    = fmt(totals.total);
         document.getElementById('pay-amount').textContent     = fmt(totals.total);
-        document.getElementById('btn-pay').disabled = false;
         updateCartMeta(itemCount, true);
+        syncDayLockUi();
     }
 
     function updateCartMeta(itemCount, hasItems) {
@@ -444,6 +571,7 @@ const POS = window.POS = (function () {
     }
 
     function openPayment() {
+        if (!ensureDayOpen()) return;
         if (cart.length === 0) return;
         const totals = calcTotal();
         const itemCount = cart.reduce((sum, item) => sum + item.qty, 0);
@@ -608,6 +736,10 @@ const POS = window.POS = (function () {
     }
 
     async function confirmPayment() {
+        if (!ensureDayOpen()) {
+            return;
+        }
+
         const totals = calcTotal();
         let cash_tendered = 0;
         let card_amount   = 0;
@@ -657,12 +789,20 @@ const POS = window.POS = (function () {
             });
             const data = await res.json();
 
+            if (res.status === 409) {
+                isDayClosed = true;
+                syncDayLockUi();
+                await loadDayEndReport(false);
+            }
+
             if (!data.success) throw new Error(data.error || 'Sale failed');
 
             lastTransactionId = data.transaction_id;
             closePayment();
             await openReceipt(data.transaction_id, data.receipt);
             pollSyncStatus();
+            await loadProducts(true);
+            await loadDayEndReport(false);
 
         } catch (err) {
             _posAlert('Error: ' + err.message);
@@ -1114,6 +1254,10 @@ const POS = window.POS = (function () {
     }
 
     function addCakeToCart() {
+        if (!ensureDayOpen()) {
+            return;
+        }
+
         if (!pendingCakeProduct) return;
 
         const flavEl   = document.getElementById('cake-flavour');
@@ -1217,9 +1361,362 @@ const POS = window.POS = (function () {
     }
 
     // ── End of Day stub ─────────────────────────────────────────
-    function openEndDay() {
-        _posAlert('End of Day closing will be available in a future update.');
-        toggleMenu();
+    async function loadDayEndReport(openModal = false) {
+        const modal = document.getElementById('endday-modal');
+        const content = document.getElementById('endday-content');
+
+        if (openModal) {
+            if (!document.getElementById('pos-menu').classList.contains('hidden')) {
+                toggleMenu();
+            }
+            content.innerHTML = '<div class="grid-loading">Loading report...</div>';
+            modal.classList.remove('hidden');
+        }
+
+        const res = await fetch('/api/reports/day-end?date=' + encodeURIComponent(businessDate));
+        const data = await res.json();
+        if (!data.success) {
+            throw new Error(data.error || 'Failed to load the day-end report.');
+        }
+
+        dayEndReport = data.report;
+        isDayClosed = !!(dayEndReport && dayEndReport.closure && dayEndReport.closure.status === 'closed');
+        syncDayLockUi();
+
+        if (openModal || !modal.classList.contains('hidden')) {
+            renderEndDayHtml(dayEndReport);
+        }
+
+        return dayEndReport;
+    }
+
+    function renderEndDayHtml(report) {
+        const content = document.getElementById('endday-content');
+        const statusNote = document.getElementById('endday-status-note');
+        const closeBtn = document.getElementById('btn-close-endday');
+        const reopenBtn = document.getElementById('btn-reopen-endday');
+        const closure = report.closure || {};
+        const summary = report.summary || {};
+        const products = report.products || [];
+        const expenses = report.expenses || [];
+        const transactions = report.transactions || [];
+        const closed = closure.status === 'closed';
+        const canAdmin = !!cfg.isAdmin;
+
+        const productRows = products.map(product => `
+            <tr>
+                <td style="padding:8px 6px;border-bottom:1px solid rgba(0,0,0,0.06);">${escHtml(product.product_name)}</td>
+                <td style="padding:8px 6px;border-bottom:1px solid rgba(0,0,0,0.06);">${product.is_cake ? 'Cake' : 'Stock'}</td>
+                <td style="padding:8px 6px;border-bottom:1px solid rgba(0,0,0,0.06);">${product.opening_stock === null ? '—' : escHtml(product.opening_stock)}</td>
+                <td style="padding:8px 6px;border-bottom:1px solid rgba(0,0,0,0.06);">${product.produced_qty === null ? '—' : escHtml(product.produced_qty)}</td>
+                <td style="padding:8px 6px;border-bottom:1px solid rgba(0,0,0,0.06);">${escHtml(product.sold_qty)}</td>
+                <td style="padding:8px 6px;border-bottom:1px solid rgba(0,0,0,0.06);">${product.closing_stock === null ? '—' : escHtml(product.closing_stock)}</td>
+                <td style="padding:8px 6px;border-bottom:1px solid rgba(0,0,0,0.06); text-align:right;">${fmt(product.revenue)}</td>
+            </tr>
+        `).join('');
+
+        const expenseRows = expenses.map(expense => `
+            <tr>
+                <td style="padding:8px 6px;border-bottom:1px solid rgba(0,0,0,0.06);">${escHtml(expense.category_name || '—')}</td>
+                <td style="padding:8px 6px;border-bottom:1px solid rgba(0,0,0,0.06);">${escHtml(expense.description || '')}</td>
+                <td style="padding:8px 6px;border-bottom:1px solid rgba(0,0,0,0.06);">${escHtml(expense.recorded_by_name || '—')}</td>
+                <td style="padding:8px 6px;border-bottom:1px solid rgba(0,0,0,0.06); text-align:right;">${fmt(expense.amount || 0)}</td>
+            </tr>
+        `).join('');
+
+        const transactionRows = transactions.map(transaction => `
+            <tr>
+                <td style="padding:8px 6px;border-bottom:1px solid rgba(0,0,0,0.06);">${escHtml(transaction.transaction_ref || '')}</td>
+                <td style="padding:8px 6px;border-bottom:1px solid rgba(0,0,0,0.06);">${escHtml(transaction.payment_method || '')}</td>
+                <td style="padding:8px 6px;border-bottom:1px solid rgba(0,0,0,0.06);">${escHtml(transaction.cashier_name || '—')}</td>
+                <td style="padding:8px 6px;border-bottom:1px solid rgba(0,0,0,0.06); text-align:right;">${fmt(transaction.total || 0)}</td>
+            </tr>
+        `).join('');
+
+        content.innerHTML = `
+            <div id="endday-print-area">
+                <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:16px;">
+                    <div>
+                        <div style="font-size:0.75rem;letter-spacing:0.08em;text-transform:uppercase;color:var(--text-muted);">BakeFlow POS</div>
+                        <h3 style="margin:4px 0 0;">Day-End Report</h3>
+                        <div style="color:var(--text-muted);font-size:0.9rem;">${escHtml(businessDate)}</div>
+                    </div>
+                    <div style="padding:8px 12px;border-radius:999px;background:${closed ? 'rgba(12,140,86,0.12)' : 'rgba(240,173,78,0.18)'};color:${closed ? '#0a7d4e' : '#7a5a00'};font-weight:700;text-transform:uppercase;font-size:0.78rem;">
+                        ${closed ? 'Closed' : 'Open'}
+                    </div>
+                </div>
+
+                <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:16px;">
+                    <div style="border:1px solid rgba(0,0,0,0.08);border-radius:14px;padding:12px;"><small style="display:block;color:var(--text-muted);margin-bottom:4px;">Transactions</small><strong>${escHtml(summary.transaction_count || 0)}</strong></div>
+                    <div style="border:1px solid rgba(0,0,0,0.08);border-radius:14px;padding:12px;"><small style="display:block;color:var(--text-muted);margin-bottom:4px;">Net Sales</small><strong>${fmt(summary.net_sales || 0)}</strong></div>
+                    <div style="border:1px solid rgba(0,0,0,0.08);border-radius:14px;padding:12px;"><small style="display:block;color:var(--text-muted);margin-bottom:4px;">Expenses</small><strong>${fmt(summary.total_expenses || 0)}</strong></div>
+                    <div style="border:1px solid rgba(0,0,0,0.08);border-radius:14px;padding:12px;"><small style="display:block;color:var(--text-muted);margin-bottom:4px;">Expected Cash</small><strong>${fmt(summary.expected_cash || 0)}</strong></div>
+                </div>
+
+                <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:18px;">
+                    <div><small style="display:block;color:var(--text-muted);margin-bottom:4px;">Cash Sales</small><strong>${fmt(summary.cash_sales || 0)}</strong></div>
+                    <div><small style="display:block;color:var(--text-muted);margin-bottom:4px;">Card Sales</small><strong>${fmt(summary.card_sales || 0)}</strong></div>
+                    <div><small style="display:block;color:var(--text-muted);margin-bottom:4px;">Mobile Sales</small><strong>${fmt(summary.mobile_sales || 0)}</strong></div>
+                    <div><small style="display:block;color:var(--text-muted);margin-bottom:4px;">Split Cash</small><strong>${fmt(summary.split_cash_sales || 0)}</strong></div>
+                </div>
+
+                <div style="margin-bottom:18px;">
+                    <h4 style="margin:0 0 8px;">Product Movement</h4>
+                    <div style="overflow:auto;border:1px solid rgba(0,0,0,0.06);border-radius:14px;">
+                        <table style="width:100%;border-collapse:collapse;font-size:0.88rem;">
+                            <thead>
+                                <tr style="background:rgba(0,0,0,0.03);">
+                                    <th style="padding:8px 6px;text-align:left;">Product</th>
+                                    <th style="padding:8px 6px;text-align:left;">Type</th>
+                                    <th style="padding:8px 6px;text-align:left;">Opening</th>
+                                    <th style="padding:8px 6px;text-align:left;">Produced</th>
+                                    <th style="padding:8px 6px;text-align:left;">Sold</th>
+                                    <th style="padding:8px 6px;text-align:left;">Closing</th>
+                                    <th style="padding:8px 6px;text-align:right;">Revenue</th>
+                                </tr>
+                            </thead>
+                            <tbody>${productRows || '<tr><td colspan="7" style="padding:12px;">No product movement recorded.</td></tr>'}</tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px;">
+                    <div>
+                        <h4 style="margin:0 0 8px;">Expenses</h4>
+                        <div style="overflow:auto;border:1px solid rgba(0,0,0,0.06);border-radius:14px;">
+                            <table style="width:100%;border-collapse:collapse;font-size:0.88rem;">
+                                <thead>
+                                    <tr style="background:rgba(0,0,0,0.03);">
+                                        <th style="padding:8px 6px;text-align:left;">Category</th>
+                                        <th style="padding:8px 6px;text-align:left;">Description</th>
+                                        <th style="padding:8px 6px;text-align:left;">User</th>
+                                        <th style="padding:8px 6px;text-align:right;">Amount</th>
+                                    </tr>
+                                </thead>
+                                <tbody>${expenseRows || '<tr><td colspan="4" style="padding:12px;">No expenses recorded.</td></tr>'}</tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <div>
+                        <h4 style="margin:0 0 8px;">Transactions</h4>
+                        <div style="overflow:auto;border:1px solid rgba(0,0,0,0.06);border-radius:14px;">
+                            <table style="width:100%;border-collapse:collapse;font-size:0.88rem;">
+                                <thead>
+                                    <tr style="background:rgba(0,0,0,0.03);">
+                                        <th style="padding:8px 6px;text-align:left;">Ref</th>
+                                        <th style="padding:8px 6px;text-align:left;">Method</th>
+                                        <th style="padding:8px 6px;text-align:left;">Cashier</th>
+                                        <th style="padding:8px 6px;text-align:right;">Total</th>
+                                    </tr>
+                                </thead>
+                                <tbody>${transactionRows || '<tr><td colspan="4" style="padding:12px;">No transactions recorded.</td></tr>'}</tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            ${canAdmin ? `
+                <div style="margin-top:18px;border-top:1px solid rgba(0,0,0,0.08);padding-top:16px;">
+                    <h4 style="margin:0 0 12px;">Admin Controls</h4>
+                    ${closed ? `
+                        <label style="display:block;font-size:0.84rem;color:var(--text-muted);margin-bottom:6px;">Reopen reason</label>
+                        <textarea id="endday-reopen-reason" style="width:100%;min-height:72px;border:1px solid rgba(0,0,0,0.12);border-radius:12px;padding:10px;" placeholder="Optional note for the audit trail"></textarea>
+                    ` : `
+                        <div style="display:grid;grid-template-columns:minmax(220px,260px) 1fr;gap:12px;">
+                            <div>
+                                <label style="display:block;font-size:0.84rem;color:var(--text-muted);margin-bottom:6px;">Actual cash counted</label>
+                                <input id="endday-actual-cash" type="number" min="0" step="0.01" value="${Number(summary.expected_cash || 0).toFixed(2)}" style="width:100%;border:1px solid rgba(0,0,0,0.12);border-radius:12px;padding:10px;">
+                            </div>
+                            <div>
+                                <label style="display:block;font-size:0.84rem;color:var(--text-muted);margin-bottom:6px;">Close notes</label>
+                                <textarea id="endday-notes" style="width:100%;min-height:72px;border:1px solid rgba(0,0,0,0.12);border-radius:12px;padding:10px;" placeholder="Optional note for the closeout"></textarea>
+                            </div>
+                        </div>
+                    `}
+                </div>
+            ` : ''}
+        `;
+
+        closeBtn.classList.toggle('hidden', !canAdmin || closed);
+        reopenBtn.classList.toggle('hidden', !canAdmin || !closed);
+        statusNote.textContent = closed
+            ? `Day closed${closure.closed_by_name ? ` by ${closure.closed_by_name}` : ''}${closure.closed_at ? ` at ${closure.closed_at}` : ''}.`
+            : (canAdmin ? 'Review figures, then enter the actual cash counted to close the day.' : 'Preview and print only. An admin must close or reopen the day.');
+    }
+
+    function closeEndDay() {
+        document.getElementById('endday-modal').classList.add('hidden');
+    }
+
+    async function openEndDay() {
+        try {
+            await loadDayEndReport(true);
+        } catch (err) {
+            _posAlert('Error: ' + err.message);
+            closeEndDay();
+        }
+    }
+
+    async function finalizeEndDay() {
+        if (!cfg.isAdmin) {
+            _posAlert('Only admins can close the day.');
+            return;
+        }
+        if (cart.length > 0) {
+            _posAlert('Clear the current cart before closing the day.');
+            return;
+        }
+
+        const actualCashInput = document.getElementById('endday-actual-cash');
+        const notesInput = document.getElementById('endday-notes');
+        const actualCash = parseFloat(actualCashInput ? actualCashInput.value || '0' : '0');
+        const notes = notesInput ? notesInput.value.trim() : '';
+
+        if (!Number.isFinite(actualCash) || actualCash < 0) {
+            _posAlert('Enter a valid actual cash amount.');
+            return;
+        }
+
+        const button = document.getElementById('btn-close-endday');
+        button.disabled = true;
+        button.textContent = 'Closing...';
+
+        try {
+            const res = await fetch('/api/reports/day-end/close', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-Token': cfg.csrfToken || '',
+                },
+                body: JSON.stringify({
+                    date: businessDate,
+                    actual_cash: actualCash,
+                    notes,
+                }),
+            });
+            const data = await res.json();
+            if (!data.success) throw new Error(data.error || 'Failed to close the day.');
+            dayEndReport = data.report;
+            isDayClosed = true;
+            syncDayLockUi();
+            renderEndDayHtml(dayEndReport);
+            closePayment();
+            closeBalancePayment();
+        } catch (err) {
+            _posAlert('Error: ' + err.message);
+        } finally {
+            button.disabled = false;
+            button.textContent = 'Close Day';
+        }
+    }
+
+    async function reopenEndDay() {
+        if (!cfg.isAdmin) {
+            _posAlert('Only admins can reopen the day.');
+            return;
+        }
+
+        const reasonInput = document.getElementById('endday-reopen-reason');
+        const reason = reasonInput ? reasonInput.value.trim() : '';
+        const button = document.getElementById('btn-reopen-endday');
+        button.disabled = true;
+        button.textContent = 'Reopening...';
+
+        try {
+            const res = await fetch('/api/reports/day-end/reopen', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-Token': cfg.csrfToken || '',
+                },
+                body: JSON.stringify({
+                    date: businessDate,
+                    reason,
+                }),
+            });
+            const data = await res.json();
+            if (!data.success) throw new Error(data.error || 'Failed to reopen the day.');
+            dayEndReport = data.report;
+            isDayClosed = false;
+            syncDayLockUi();
+            renderEndDayHtml(dayEndReport);
+        } catch (err) {
+            _posAlert('Error: ' + err.message);
+        } finally {
+            button.disabled = false;
+            button.textContent = 'Reopen Day';
+        }
+    }
+
+    function printEndDay() {
+        if (!dayEndReport) {
+            _posAlert('No day-end report is loaded.');
+            return;
+        }
+
+        const area = document.getElementById('endday-print-area');
+        if (!area) {
+            _posAlert('Printable report content was not found.');
+            return;
+        }
+
+        const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Day End ${escHtml(businessDate)}</title>
+    <style>
+        @page { size: 80mm auto; margin: 4mm; }
+        body { margin: 0; font-family: Arial, sans-serif; color: #111; font-size: 11px; }
+        h3, h4 { margin: 0 0 6px; }
+        small { color: #666; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { padding: 4px 0; vertical-align: top; }
+    </style>
+</head>
+<body>${area.outerHTML}</body>
+</html>`;
+
+        const frame = document.createElement('iframe');
+        frame.style.position = 'fixed';
+        frame.style.right = '0';
+        frame.style.bottom = '0';
+        frame.style.width = '0';
+        frame.style.height = '0';
+        frame.style.border = '0';
+        frame.style.opacity = '0';
+        document.body.appendChild(frame);
+
+        const cleanup = () => {
+            setTimeout(() => frame.remove(), 200);
+        };
+
+        frame.onload = function() {
+            const printWindow = frame.contentWindow;
+            if (!printWindow) {
+                cleanup();
+                window.print();
+                return;
+            }
+
+            printWindow.onafterprint = cleanup;
+            setTimeout(() => {
+                printWindow.focus();
+                printWindow.print();
+            }, 120);
+        };
+
+        const doc = frame.contentWindow ? frame.contentWindow.document : null;
+        if (!doc) {
+            cleanup();
+            window.print();
+            return;
+        }
+
+        doc.open();
+        doc.write(html);
+        doc.close();
     }
 
     // ── Cake Pickups ────────────────────────────────────────────
@@ -1288,6 +1785,10 @@ const POS = window.POS = (function () {
 
     // ── Balance Payment ─────────────────────────────────────────
     function startBalancePayment(cakeOrderId, balanceDue, details, customerName) {
+        if (!ensureDayOpen()) {
+            return;
+        }
+
         closeCakePickups();
         pendingBalanceOrder = { id: cakeOrderId, balance: balanceDue };
         balancePayMethod = 'cash';
@@ -1344,6 +1845,10 @@ const POS = window.POS = (function () {
     }
 
     async function confirmBalancePayment() {
+        if (!ensureDayOpen()) {
+            return;
+        }
+
         if (!pendingBalanceOrder) return;
 
         const bal = pendingBalanceOrder.balance;
@@ -1381,11 +1886,17 @@ const POS = window.POS = (function () {
                 }),
             });
             const data = await res.json();
+            if (res.status === 409) {
+                isDayClosed = true;
+                syncDayLockUi();
+                await loadDayEndReport(false);
+            }
             if (!data.success) throw new Error(data.error || 'Payment failed');
 
             closeBalancePayment();
             await openReceipt(data.transaction_id, data.receipt);
             pollSyncStatus();
+            await loadDayEndReport(false);
         } catch (err) {
             _posAlert('Error: ' + err.message);
         } finally {
@@ -1430,6 +1941,7 @@ const POS = window.POS = (function () {
             if (!document.getElementById('cake-modal').classList.contains('hidden'))           { closeCakeModal();       return; }
             if (!document.getElementById('payment-modal').classList.contains('hidden'))        { closePayment();         return; }
             if (!document.getElementById('receipt-modal').classList.contains('hidden'))        { closeReceipt();         return; }
+            if (!document.getElementById('endday-modal').classList.contains('hidden'))         { closeEndDay();          return; }
             if (!document.getElementById('cake-pickups-modal').classList.contains('hidden'))   { closeCakePickups();     return; }
             if (!document.getElementById('balance-payment-modal').classList.contains('hidden')){ closeBalancePayment();  return; }
             if (!document.getElementById('pos-menu').classList.contains('hidden'))             { toggleMenu();           return; }
@@ -1511,6 +2023,9 @@ const POS = window.POS = (function () {
         startClock();
         loadProducts();
         pollSyncStatus();
+        loadDayEndReport(false).catch(() => {
+            syncDayLockUi();
+        });
 
         // Apply shop primary colour
         if (cfg.primaryColor) {
@@ -1536,10 +2051,14 @@ const POS = window.POS = (function () {
         initBarcodeScanner();
 
         // Refresh catalogue when returning to the POS so admin price changes show up quickly.
-        window.addEventListener('focus', () => loadProducts(true));
+        window.addEventListener('focus', () => {
+            loadProducts(true);
+            loadDayEndReport(false).catch(() => {});
+        });
         document.addEventListener('visibilitychange', () => {
             if (!document.hidden) {
                 loadProducts(true);
+                loadDayEndReport(false).catch(() => {});
             }
         });
 
@@ -1582,6 +2101,10 @@ const POS = window.POS = (function () {
         pollSyncStatus,
         toggleMenu,
         openEndDay,
+        closeEndDay,
+        finalizeEndDay,
+        reopenEndDay,
+        printEndDay,
         handleKey,
         _dialogOk,
         _dialogCancel,

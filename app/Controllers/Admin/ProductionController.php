@@ -6,6 +6,7 @@ namespace App\Controllers\Admin;
 use App\Controllers\BaseController;
 use App\Core\Auth;
 use App\Core\Database;
+use App\Core\SyncState;
 use App\Core\View;
 
 class ProductionController extends BaseController
@@ -32,7 +33,6 @@ class ProductionController extends BaseController
              ORDER BY c.sort_order, p.sort_order, p.name"
         )->fetchAll();
 
-        // Current stock levels
         $stockLevels = $db->query("
             SELECT p.id, p.name, p.stock_quantity, c.name AS category_name
             FROM products p
@@ -41,7 +41,6 @@ class ProductionController extends BaseController
             ORDER BY c.sort_order, p.sort_order, p.name
         ")->fetchAll();
 
-        // Today's production total
         $today = date('Y-m-d');
         $stmt = $db->prepare("SELECT COALESCE(SUM(quantity), 0) FROM production_entries WHERE production_date = ?");
         $stmt->execute([$today]);
@@ -56,8 +55,8 @@ class ProductionController extends BaseController
         $this->verifyCsrf();
 
         $db = Database::getConnection();
-        $productId      = (int)($_POST['product_id'] ?? 0);
-        $quantity        = (int)($_POST['quantity'] ?? 0);
+        $productId = (int)($_POST['product_id'] ?? 0);
+        $quantity = (int)($_POST['quantity'] ?? 0);
         $productionDate = $_POST['production_date'] ?? '';
 
         if ($quantity < 1) {
@@ -90,7 +89,6 @@ class ProductionController extends BaseController
                 $productionDate,
             ]);
 
-            // Increment stock
             $db->prepare("UPDATE products SET stock_quantity = stock_quantity + ? WHERE id = ?")
                ->execute([$quantity, $productId]);
 
@@ -101,7 +99,8 @@ class ProductionController extends BaseController
             return;
         }
 
-        $this->redirect('/admin/production', 'Production entry recorded — stock updated.');
+        SyncState::markDirty($db, ['production_entries', 'products']);
+        $this->redirect('/admin/production', 'Production entry recorded â€” stock updated.');
     }
 
     public function delete(): void
@@ -112,7 +111,6 @@ class ProductionController extends BaseController
         $db = Database::getConnection();
         $id = (int)$_POST['id'];
 
-        // Fetch entry to reverse stock
         $stmt = $db->prepare("SELECT product_id, quantity FROM production_entries WHERE id = ?");
         $stmt->execute([$id]);
         $entry = $stmt->fetch();
@@ -125,8 +123,6 @@ class ProductionController extends BaseController
         $db->beginTransaction();
         try {
             $db->prepare("DELETE FROM production_entries WHERE id = ?")->execute([$id]);
-
-            // Decrement stock (floor at 0)
             $db->prepare("UPDATE products SET stock_quantity = MAX(0, stock_quantity - ?) WHERE id = ?")
                ->execute([(int)$entry['quantity'], (int)$entry['product_id']]);
 
@@ -137,6 +133,7 @@ class ProductionController extends BaseController
             return;
         }
 
-        $this->redirect('/admin/production', 'Production entry deleted — stock adjusted.');
+        SyncState::markDirty($db, ['production_entries', 'products']);
+        $this->redirect('/admin/production', 'Production entry deleted â€” stock adjusted.');
     }
 }

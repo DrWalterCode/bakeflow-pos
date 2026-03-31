@@ -36,13 +36,58 @@ class PrinterController extends BaseController
                 $printerName = trim((string)($printSettings['receipt_printer_name'] ?? ''));
             }
 
-            $result = $this->dispatchToWindowsPrinter($receipt, $printerName);
+            $result = $this->dispatchRawPrintJob(
+                $this->buildEscPosReceipt($receipt),
+                (string)($receipt['transaction_ref'] ?: 'BakeFlow Receipt'),
+                $printerName
+            );
 
             $this->json([
                 'success'        => true,
                 'printer_name'   => $result['printer_name'] ?? '',
                 'bytes_written'  => (int)($result['bytes_written'] ?? 0),
                 'transaction_id' => $transactionId,
+            ]);
+        } catch (\RuntimeException $e) {
+            $this->jsonError($e->getMessage(), 500);
+        }
+    }
+
+    public function printCakeOrderSlip(): void
+    {
+        $this->requireAdmin();
+
+        $input = json_decode((string)file_get_contents('php://input'), true);
+        $cakeOrderId = (int)($input['cake_order_id'] ?? 0);
+
+        if ($cakeOrderId <= 0) {
+            $this->jsonError('Invalid cake order ID.');
+        }
+
+        try {
+            $printSettings = $this->loadPrintSettings();
+            $slip = $this->loadCakeOrderSlipData($cakeOrderId);
+
+            $printerName = trim((string)($input['printer_name'] ?? ''));
+            if ($printerName === '') {
+                $printerName = trim((string)($printSettings['receipt_printer_name'] ?? ''));
+            }
+
+            $jobName = $slip['transaction_ref'] !== ''
+                ? 'Cake Slip ' . $slip['transaction_ref']
+                : 'Cake Slip #' . $cakeOrderId;
+
+            $result = $this->dispatchRawPrintJob(
+                $this->buildEscPosCakeOrderSlip($slip),
+                $jobName,
+                $printerName
+            );
+
+            $this->json([
+                'success'       => true,
+                'printer_name'  => $result['printer_name'] ?? '',
+                'bytes_written' => (int)($result['bytes_written'] ?? 0),
+                'cake_order_id' => $cakeOrderId,
             ]);
         } catch (\RuntimeException $e) {
             $this->jsonError($e->getMessage(), 500);
@@ -152,7 +197,55 @@ class PrinterController extends BaseController
         ];
     }
 
-    private function dispatchToWindowsPrinter(array $receipt, string $printerName = ''): array
+    private function loadCakeOrderSlipData(int $cakeOrderId): array
+    {
+        $db = Database::getConnection();
+
+        $stmt = $db->prepare("
+            SELECT co.*, cf.name AS flavour_name, cs.name AS size_name,
+                   t.transaction_ref, t.created_at AS order_date
+            FROM cake_orders co
+            LEFT JOIN cake_flavours cf ON cf.id = co.flavour_id
+            LEFT JOIN cake_sizes cs ON cs.id = co.size_id
+            LEFT JOIN transaction_items ti ON ti.id = co.transaction_item_id
+            LEFT JOIN transactions t ON t.id = ti.transaction_id
+            WHERE co.id = ?
+            LIMIT 1
+        ");
+        $stmt->execute([$cakeOrderId]);
+        $order = $stmt->fetch();
+
+        if (!$order) {
+            throw new \RuntimeException('Cake order not found.');
+        }
+
+        $shop = $db->query("SELECT * FROM shops WHERE id = 1 LIMIT 1")->fetch();
+
+        return [
+            'id'              => (int)$order['id'],
+            'transaction_ref' => (string)($order['transaction_ref'] ?? ''),
+            'order_date'      => (string)($order['order_date'] ?? $order['created_at']),
+            'created_at'      => (string)$order['created_at'],
+            'pickup_date'     => (string)($order['pickup_date'] ?? ''),
+            'customer_name'   => (string)($order['customer_name'] ?? ''),
+            'customer_phone'  => (string)($order['customer_phone'] ?? ''),
+            'flavour_name'    => (string)($order['flavour_name'] ?? ''),
+            'size_name'       => (string)($order['size_name'] ?? ''),
+            'shape'           => (string)($order['shape'] ?? ''),
+            'inscription'     => (string)($order['inscription'] ?? ''),
+            'notes'           => (string)($order['notes'] ?? ''),
+            'additional_cost' => (float)($order['additional_cost'] ?? 0),
+            'full_price'      => (float)($order['full_price'] ?? 0),
+            'amount_paid'     => (float)($order['amount_paid'] ?? 0),
+            'balance_due'     => (float)($order['balance_due'] ?? 0),
+            'payment_status'  => (string)($order['payment_status'] ?? ''),
+            'order_status'    => (string)($order['order_status'] ?? ''),
+            'currency_symbol' => (string)($shop['currency_symbol'] ?? '$'),
+            'shop_name'       => (string)($shop['name'] ?? ''),
+        ];
+    }
+
+    private function dispatchRawPrintJob(string $payload, string $jobName, string $printerName = ''): array
     {
         $scriptPath = APP_ROOT . '/scripts/windows/raw-print-receipt.ps1';
         if (!is_file($scriptPath)) {
@@ -160,8 +253,7 @@ class PrinterController extends BaseController
         }
 
         $powershell = $this->resolvePowerShellPath();
-        $payloadBase64 = base64_encode($this->buildEscPosReceipt($receipt));
-        $jobName = $receipt['transaction_ref'] ?: 'BakeFlow Receipt';
+        $payloadBase64 = base64_encode($payload);
 
         $command = sprintf(
             '"%s" -NoProfile -ExecutionPolicy Bypass -File "%s" -PayloadBase64 %s -JobName %s',
@@ -285,6 +377,97 @@ class PrinterController extends BaseController
             $output .= $this->esc(0x70, self::DRAWER_PIN, self::DRAWER_PULSE_ON, self::DRAWER_PULSE_OFF);
         }
 
+        $output .= $this->esc(0x64, self::CUT_FEED_LINES);
+        $output .= $this->gs(0x56, 0x00);
+
+        return $output;
+    }
+
+    private function buildEscPosCakeOrderSlip(array $slip): string
+    {
+        $output = '';
+
+        $output .= $this->esc(0x40);
+        $output .= $this->esc(0x74, self::PRINTER_CODE_PAGE);
+        $output .= $this->esc(0x61, 1);
+        $output .= $this->gs(0x21, 0x11);
+        $output .= $this->esc(0x45, 1);
+        $output .= $this->appendCenteredBlock('PRODUCTION SLIP', 21);
+        $output .= $this->gs(0x21, 0x00);
+        $output .= $this->esc(0x45, 0);
+
+        if (trim((string)$slip['shop_name']) !== '') {
+            $output .= $this->appendCenteredBlock((string)$slip['shop_name'], self::LINE_WIDTH);
+        }
+
+        $output .= $this->textLine(str_repeat('-', self::LINE_WIDTH));
+        $output .= $this->formatRow('Order #', (string)$slip['id']);
+
+        if ((string)$slip['transaction_ref'] !== '') {
+            $output .= $this->formatRow('Receipt #', (string)$slip['transaction_ref']);
+        }
+
+        $output .= $this->formatRow('Ordered', $this->formatTimestamp((string)$slip['order_date']));
+
+        if ((string)$slip['pickup_date'] !== '') {
+            $output .= $this->esc(0x45, 1);
+            $output .= $this->formatRow('Pickup', $this->formatPickupDate((string)$slip['pickup_date']));
+            $output .= $this->esc(0x45, 0);
+        }
+
+        $output .= $this->textLine(str_repeat('-', self::LINE_WIDTH));
+        $output .= $this->formatItemRow('Customer', '', 0);
+        $output .= $this->formatItemRow((string)($slip['customer_name'] !== '' ? $slip['customer_name'] : 'Walk-in'), '', 2);
+
+        if ((string)$slip['customer_phone'] !== '') {
+            $output .= $this->formatItemRow((string)$slip['customer_phone'], '', 2);
+        }
+
+        $output .= $this->textLine(str_repeat('-', self::LINE_WIDTH));
+        $output .= $this->formatRow('Flavour', (string)($slip['flavour_name'] !== '' ? $slip['flavour_name'] : '-'));
+        $output .= $this->formatRow('Size', (string)($slip['size_name'] !== '' ? $slip['size_name'] : '-'));
+        $output .= $this->formatRow('Shape', ucfirst((string)($slip['shape'] !== '' ? $slip['shape'] : 'round')));
+
+        if ((float)$slip['additional_cost'] > 0) {
+            $output .= $this->formatRow('Extras', $this->formatMoney((float)$slip['additional_cost'], $slip));
+        }
+
+        if ((string)$slip['inscription'] !== '') {
+            $output .= $this->textLine(str_repeat('-', self::LINE_WIDTH));
+            $output .= $this->formatItemRow('Inscription', '', 0);
+            $output .= $this->esc(0x45, 1);
+            $output .= $this->formatItemRow('"' . (string)$slip['inscription'] . '"', '', 2);
+            $output .= $this->esc(0x45, 0);
+        }
+
+        if ((string)$slip['notes'] !== '') {
+            $output .= $this->textLine(str_repeat('-', self::LINE_WIDTH));
+            $output .= $this->formatItemRow('Notes', '', 0);
+            $output .= $this->formatItemRow((string)$slip['notes'], '', 2);
+        }
+
+        $output .= $this->textLine(str_repeat('-', self::LINE_WIDTH));
+        $output .= $this->formatRow('Total', $this->formatMoney((float)$slip['full_price'], $slip));
+        $output .= $this->formatRow('Paid', $this->formatMoney((float)$slip['amount_paid'], $slip));
+
+        if ((float)$slip['balance_due'] > 0) {
+            $output .= $this->formatRow('Balance', $this->formatMoney((float)$slip['balance_due'], $slip));
+        }
+
+        $paymentStatus = (string)$slip['payment_status'];
+        if ($paymentStatus !== '') {
+            $output .= $this->formatRow('Payment', strtoupper(str_replace('_', ' ', $paymentStatus)));
+        }
+
+        $orderStatus = (string)$slip['order_status'];
+        if ($orderStatus !== '') {
+            $output .= $this->formatRow('Status', strtoupper(str_replace('_', ' ', $orderStatus)));
+        }
+
+        $output .= $this->textLine(str_repeat('-', self::LINE_WIDTH));
+        $output .= $this->esc(0x61, 1);
+        $output .= $this->appendCenteredBlock('Printed ' . date('Y-m-d H:i'), self::LINE_WIDTH);
+        $output .= $this->esc(0x61, 0);
         $output .= $this->esc(0x64, self::CUT_FEED_LINES);
         $output .= $this->gs(0x56, 0x00);
 

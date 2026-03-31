@@ -5,6 +5,7 @@ namespace App\Controllers\Admin;
 
 use App\Controllers\BaseController;
 use App\Core\Database;
+use App\Core\SyncState;
 use App\Core\View;
 
 class UserController extends BaseController
@@ -22,11 +23,11 @@ class UserController extends BaseController
         $this->requireAdmin();
         $this->verifyCsrf();
 
-        $name     = trim($_POST['name'] ?? '');
+        $name = trim($_POST['name'] ?? '');
         $username = trim($_POST['username'] ?? '');
-        $role     = ($_POST['role'] ?? 'cashier') === 'admin' ? 'admin' : 'cashier';
+        $role = ($_POST['role'] ?? 'cashier') === 'admin' ? 'admin' : 'cashier';
         $password = $_POST['password'] ?? '';
-        $pin      = $_POST['pin']      ?? '';
+        $pin = $_POST['pin'] ?? '';
 
         if ($name === '' || $username === '') {
             $this->redirect('/admin/users', 'Name and username are required.', 'error');
@@ -50,7 +51,6 @@ class UserController extends BaseController
 
         $db = Database::getConnection();
 
-        // Check unique username
         $exists = $db->prepare("SELECT id FROM users WHERE username = ?");
         $exists->execute([$username]);
         if ($exists->fetch()) {
@@ -58,11 +58,12 @@ class UserController extends BaseController
         }
 
         $passwordHash = ($password !== '') ? password_hash($password, PASSWORD_BCRYPT, ['cost' => 12]) : null;
-        $pinHash      = ($pin !== '')      ? password_hash($pin,      PASSWORD_BCRYPT, ['cost' => 12]) : null;
+        $pinHash = ($pin !== '') ? password_hash($pin, PASSWORD_BCRYPT, ['cost' => 12]) : null;
 
         $db->prepare("INSERT INTO users (name, username, password_hash, pin_hash, role) VALUES (?, ?, ?, ?, ?)")
            ->execute([$name, $username, $passwordHash, $pinHash, $role]);
 
+        SyncState::markDirty($db, 'users');
         $this->redirect('/admin/users', 'User created.');
     }
 
@@ -71,11 +72,11 @@ class UserController extends BaseController
         $this->requireAdmin();
         $this->verifyCsrf();
 
-        $id   = (int)$_POST['id'];
+        $id = (int)$_POST['id'];
         $name = trim($_POST['name'] ?? '');
         $role = ($_POST['role'] ?? 'cashier') === 'admin' ? 'admin' : 'cashier';
         $active = isset($_POST['is_active']) ? 1 : 0;
-        $pin      = $_POST['pin'] ?? '';
+        $pin = $_POST['pin'] ?? '';
         $password = $_POST['password'] ?? '';
 
         if ($name === '') {
@@ -94,18 +95,17 @@ class UserController extends BaseController
         $db->prepare("UPDATE users SET name = ?, role = ?, is_active = ? WHERE id = ?")
            ->execute([$name, $role, $active, $id]);
 
-        // Update PIN if provided
         if ($pin !== '') {
             $db->prepare("UPDATE users SET pin_hash = ?, pin_fail_count = 0, pin_locked_until = NULL WHERE id = ?")
                ->execute([password_hash($pin, PASSWORD_BCRYPT, ['cost' => 12]), $id]);
         }
 
-        // Update password if provided
         if ($password !== '') {
             $db->prepare("UPDATE users SET password_hash = ? WHERE id = ?")
                ->execute([password_hash($password, PASSWORD_BCRYPT, ['cost' => 12]), $id]);
         }
 
+        SyncState::markDirty($db, 'users');
         $this->redirect('/admin/users', 'User updated.');
     }
 
@@ -116,6 +116,7 @@ class UserController extends BaseController
         $db = Database::getConnection();
         $db->prepare("UPDATE users SET is_active = 0 WHERE id = ?")
            ->execute([(int)$_POST['id']]);
+        SyncState::markDirty($db, 'users');
         $this->redirect('/admin/users', 'User deactivated.');
     }
 }

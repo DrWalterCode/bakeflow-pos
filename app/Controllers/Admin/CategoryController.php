@@ -5,6 +5,7 @@ namespace App\Controllers\Admin;
 
 use App\Controllers\BaseController;
 use App\Core\Database;
+use App\Core\SyncState;
 use App\Core\View;
 
 class CategoryController extends BaseController
@@ -39,6 +40,7 @@ class CategoryController extends BaseController
 
         $db->prepare("INSERT INTO categories (name, color, sort_order, is_active) VALUES (?, ?, ?, ?)")
            ->execute([$name, trim($_POST['color'] ?? '#6c757d'), (int)($_POST['sort_order'] ?? 0), isset($_POST['is_active']) ? 1 : 0]);
+        SyncState::markDirty($db, 'categories');
         $this->redirect('/admin/categories', 'Category added.');
     }
 
@@ -47,7 +49,7 @@ class CategoryController extends BaseController
         $this->requireAdmin();
         $this->verifyCsrf();
 
-        $id   = (int)($_POST['id'] ?? 0);
+        $id = (int)($_POST['id'] ?? 0);
         $name = trim($_POST['name'] ?? '');
         if ($name === '') {
             $this->redirect('/admin/categories', 'Category name is required.', 'error');
@@ -63,6 +65,7 @@ class CategoryController extends BaseController
 
         $db->prepare("UPDATE categories SET name = ?, color = ?, sort_order = ?, is_active = ? WHERE id = ?")
            ->execute([$name, trim($_POST['color'] ?? '#6c757d'), (int)($_POST['sort_order'] ?? 0), isset($_POST['is_active']) ? 1 : 0, $id]);
+        SyncState::markDirty($db, 'categories');
         $this->redirect('/admin/categories', 'Category updated.');
     }
 
@@ -73,6 +76,7 @@ class CategoryController extends BaseController
         $db = Database::getConnection();
         $db->prepare("UPDATE categories SET is_active = 0 WHERE id = ?")
            ->execute([(int)$_POST['id']]);
+        SyncState::markDirty($db, 'categories');
         $this->redirect('/admin/categories', 'Category deactivated.');
     }
 }
