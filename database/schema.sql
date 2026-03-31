@@ -64,6 +64,8 @@ CREATE TABLE IF NOT EXISTS products (
     is_active   INTEGER NOT NULL DEFAULT 1,
     is_cake        INTEGER NOT NULL DEFAULT 0,
     stock_quantity INTEGER NOT NULL DEFAULT 0,
+    is_quick_item  INTEGER NOT NULL DEFAULT 0,
+    quick_item_order INTEGER NOT NULL DEFAULT 0,
     sort_order     INTEGER NOT NULL DEFAULT 0,
     created_at     DATETIME NOT NULL DEFAULT (datetime('now'))
 );

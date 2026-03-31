@@ -63,6 +63,8 @@ CREATE TABLE IF NOT EXISTS products (
     is_active      TINYINT(1)   NOT NULL DEFAULT 1,
     is_cake        TINYINT(1)   NOT NULL DEFAULT 0,
     stock_quantity INT          NOT NULL DEFAULT 0,
+    is_quick_item  TINYINT(1)   NOT NULL DEFAULT 0,
+    quick_item_order INT        NOT NULL DEFAULT 0,
     sort_order     INT          NOT NULL DEFAULT 0,
     created_at     DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE RESTRICT

@@ -26,52 +26,44 @@ INSERT INTO users (name, username, password_hash, pin_hash, role) VALUES
 -- -----------------------------------------------------
 -- Categories
 -- -----------------------------------------------------
-INSERT INTO categories (id, name, color, sort_order) VALUES
-    (1, 'Pies',       '#D94F3D', 1),
-    (2, 'Cupcakes',   '#E8631A', 2),
-    (3, 'Muffins',    '#F0A500', 3),
-    (4, 'Cookies',    '#8B6914', 4),
-    (5, 'Cake Slices','#C0392B', 5),
-    (6, 'Pastries',   '#9B59B6', 6),
-    (7, 'Cakes',      '#2980B9', 7);
+INSERT INTO categories (id, name, color, sort_order, is_active) VALUES
+    (1, 'Pies',        '#D94F3D', 1, 1),
+    (2, 'Cupcakes',    '#E8631A', 2, 1),
+    (3, 'Muffins',     '#F0A500', 3, 0),
+    (4, 'Cookies',     '#8B6914', 4, 1),
+    (5, 'Cake Slices', '#C0392B', 5, 0),
+    (6, 'Pastries',    '#9B59B6', 6, 1),
+    (7, 'Cakes',       '#2980B9', 7, 1);
 
 -- -----------------------------------------------------
 -- Products
 -- -----------------------------------------------------
-INSERT INTO products (category_id, name, price, sort_order) VALUES
-    (1, 'Steak Pie',             1.50, 1),
-    (1, 'Chicken Mushroom Pie',  1.50, 2),
-    (1, 'Beef Mince Pie',        1.50, 3),
-    (1, 'Steak & Kidney Pie',    1.50, 4),
-    (1, 'Pepper Steak Pie',      1.50, 5),
-    (1, 'Bacon & Cheese Sticks', 1.50, 6);
+INSERT INTO products (category_id, name, price, is_quick_item, quick_item_order, sort_order) VALUES
+    (1, 'Beef and Mince Pie (BMP)',        1.50, 1,  1, 1),
+    (1, 'Chicken and Mushroom Pie (CMP)',  1.50, 1,  2, 2),
+    (1, 'Sausage Roll',                    1.50, 1,  3, 3);
 
-INSERT INTO products (category_id, name, price, sort_order) VALUES
-    (2, 'Cupcakes (Dozen)', 10.00, 1);
+INSERT INTO products (category_id, name, price, is_quick_item, quick_item_order, sort_order) VALUES
+    (2, 'Cup Cakes',                       0.50, 1, 10, 1);
 
-INSERT INTO products (category_id, name, price, sort_order) VALUES
-    (3, 'Muffins Standard (Dozen)', 10.00, 1),
-    (3, 'Muffins Jumbo (Dozen)',    20.00, 2);
+INSERT INTO products (category_id, name, price, is_quick_item, quick_item_order, sort_order) VALUES
+    (4, 'Large Biscuits',                  1.00, 1, 11, 1);
 
-INSERT INTO products (category_id, name, price, sort_order) VALUES
-    (4, 'Oatmeal Cookie',       1.00, 1),
-    (4, 'Choc Chip Cookie',     1.00, 2),
-    (4, 'Snickerdoodle Cookie', 1.00, 3);
+INSERT INTO products (category_id, name, price, is_quick_item, quick_item_order, sort_order) VALUES
+    (6, 'Samosa - Beef',                   1.50, 1,  4, 1),
+    (6, 'Samosa - Chicken',                1.50, 1,  5, 2),
+    (6, 'Croissant',                       1.50, 1,  6, 3),
+    (6, 'Cinnamon Rolls',                  1.50, 1,  7, 4),
+    (6, 'Scone',                           1.50, 1,  8, 5),
+    (6, 'Donuts',                          1.50, 1,  9, 6),
+    (6, 'Cream Puff',                      1.50, 1, 14, 7);
 
-INSERT INTO products (category_id, name, price, sort_order) VALUES
-    (5, 'Cake Slice',     2.00, 1),
-    (5, 'Fudge Brownie',  2.00, 2),
-    (5, 'Cherry Almond',  3.00, 3);
+INSERT INTO products (category_id, name, price, is_quick_item, quick_item_order, sort_order) VALUES
+    (7, 'Vanilla Cake',                    2.00, 1, 12, 1),
+    (7, 'Lemon Cake',                      2.00, 1, 13, 2);
 
-INSERT INTO products (category_id, name, price, sort_order) VALUES
-    (6, 'Donut',           0.00, 1),
-    (6, 'Samosa',          0.00, 2),
-    (6, 'Croissant',       0.00, 3),
-    (6, 'Cinnamon Roll',   0.00, 4),
-    (6, 'Tray Bake',       0.00, 5);
-
-INSERT INTO products (category_id, name, price, is_cake, sort_order) VALUES
-    (7, 'Custom Cake', 0.00, 1, 1);
+INSERT INTO products (category_id, name, price, is_cake, is_quick_item, quick_item_order, sort_order) VALUES
+    (7, 'Custom Cake', 0.00, 1, 0, 0, 99);
 
 -- -----------------------------------------------------
 -- Cake Sizes

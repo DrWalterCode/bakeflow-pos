@@ -36,6 +36,8 @@ class ProductController extends BaseController
         $name       = trim($_POST['name'] ?? '');
         $price      = (float)($_POST['price'] ?? 0);
         $categoryId = (int)($_POST['category_id'] ?? 0);
+        $isQuickItem = isset($_POST['is_quick_item']) ? 1 : 0;
+        $quickItemOrder = max(0, (int)($_POST['quick_item_order'] ?? 0));
 
         if ($name === '') {
             $this->redirect('/admin/products', 'Product name is required.', 'error');
@@ -59,8 +61,8 @@ class ProductController extends BaseController
         }
 
         $db->prepare("
-            INSERT INTO products (category_id, name, description, price, barcode, is_active, is_cake, sort_order)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO products (category_id, name, description, price, barcode, is_active, is_cake, is_quick_item, quick_item_order, sort_order)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ")->execute([
             $categoryId,
             $name,
@@ -69,6 +71,8 @@ class ProductController extends BaseController
             trim($_POST['barcode'] ?? '') ?: null,
             isset($_POST['is_active']) ? 1 : 0,
             isset($_POST['is_cake'])   ? 1 : 0,
+            $isQuickItem,
+            $quickItemOrder,
             (int)($_POST['sort_order'] ?? 0),
         ]);
 
@@ -84,6 +88,8 @@ class ProductController extends BaseController
         $name       = trim($_POST['name'] ?? '');
         $price      = (float)($_POST['price'] ?? 0);
         $categoryId = (int)($_POST['category_id'] ?? 0);
+        $isQuickItem = isset($_POST['is_quick_item']) ? 1 : 0;
+        $quickItemOrder = max(0, (int)($_POST['quick_item_order'] ?? 0));
 
         if ($name === '') {
             $this->redirect('/admin/products', 'Product name is required.', 'error');
@@ -103,7 +109,7 @@ class ProductController extends BaseController
         $db->prepare("
             UPDATE products
             SET category_id = ?, name = ?, description = ?, price = ?,
-                barcode = ?, is_active = ?, is_cake = ?, sort_order = ?
+                barcode = ?, is_active = ?, is_cake = ?, is_quick_item = ?, quick_item_order = ?, sort_order = ?
             WHERE id = ?
         ")->execute([
             $categoryId,
@@ -113,6 +119,8 @@ class ProductController extends BaseController
             trim($_POST['barcode'] ?? '') ?: null,
             isset($_POST['is_active']) ? 1 : 0,
             isset($_POST['is_cake'])   ? 1 : 0,
+            $isQuickItem,
+            $quickItemOrder,
             (int)($_POST['sort_order'] ?? 0),
             $id,
         ]);

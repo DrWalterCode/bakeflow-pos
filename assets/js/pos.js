@@ -113,16 +113,16 @@ const POS = window.POS = (function () {
     }
 
     // ── Product Loading ─────────────────────────────────────────
-    const CACHE_KEY = 'bfpos_products_cache';
-    const CACHE_TS  = 'bfpos_products_ts';
+    const CACHE_KEY = 'bfpos_products_cache_v2';
+    const CACHE_TS  = 'bfpos_products_ts_v2';
     const CACHE_TTL = (cfg.cacheTtl || 300) * 1000; // ms
 
-    async function loadProducts() {
+    async function loadProducts(forceRefresh = false) {
         try {
             const cached = localStorage.getItem(CACHE_KEY);
             const ts     = parseInt(localStorage.getItem(CACHE_TS) || '0', 10);
 
-            if (cached && (Date.now() - ts) < CACHE_TTL) {
+            if (!forceRefresh && cached && (Date.now() - ts) < CACHE_TTL) {
                 const data = JSON.parse(cached);
                 products   = data.products   || [];
                 categories = data.categories || [];
@@ -154,7 +154,7 @@ const POS = window.POS = (function () {
         const nav = document.getElementById('category-tabs');
         nav.innerHTML = '';
 
-        // "Quick Items" tab first — top 10 sellers (for now, all products)
+        // "Quick Items" tab first — admin-configured quick-access products
         const allBtn = document.createElement('button');
         allBtn.className = 'cat-tab active';
         allBtn.textContent = '⚡ Quick Items';
@@ -208,13 +208,25 @@ const POS = window.POS = (function () {
                 String(p.name || '').toLowerCase().includes(search) ||
                 String(p.barcode || '').toLowerCase().includes(search)
             );
-            filtered = filtered.filter(p => p.price > 0 || p.is_cake);
+            filtered = filtered.filter(p => !p.is_cake || p.price > 0);
         } else if (catId === 'quick') {
-            // Show top 10 — for now just show first 10 non-cake, non-zero products
             filtered = products
-                .filter(p => p.price > 0 && !p.is_cake)
-                .slice(0, 10);
+                .filter(p => p.is_quick_item && !p.is_cake)
+                .sort((a, b) => {
+                    const quickOrder = (a.quick_item_order || 0) - (b.quick_item_order || 0);
+                    if (quickOrder !== 0) {
+                        return quickOrder;
+                    }
+
+                    const sortOrder = (a.sort_order || 0) - (b.sort_order || 0);
+                    if (sortOrder !== 0) {
+                        return sortOrder;
+                    }
+
+                    return String(a.name || '').localeCompare(String(b.name || ''));
+                });
             if (filtered.length === 0) {
+                // Fallback for databases where quick-access items are not configured yet.
                 filtered = products.filter(p => p.price > 0).slice(0, 10);
             }
         } else {
@@ -266,6 +278,12 @@ const POS = window.POS = (function () {
             openCakeModal(product);
             return;
         }
+
+        if (Number(product.price || 0) <= 0) {
+            _posAlert(`Set a price for "${product.name}" in Admin > Products before selling it.`);
+            return;
+        }
+
         const existing = cart.findIndex(i => i.id === product.id && !i.cake_data);
         if (existing >= 0) {
             cart[existing].qty++;
@@ -1216,6 +1234,14 @@ const POS = window.POS = (function () {
 
         // Barcode scanner
         initBarcodeScanner();
+
+        // Refresh catalogue when returning to the POS so admin price changes show up quickly.
+        window.addEventListener('focus', () => loadProducts(true));
+        document.addEventListener('visibilitychange', () => {
+            if (!document.hidden) {
+                loadProducts(true);
+            }
+        });
     }
 
     // Public API
