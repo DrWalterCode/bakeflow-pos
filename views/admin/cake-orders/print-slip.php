@@ -160,6 +160,12 @@
         <div class="slip-label">Shape</div>
         <div class="slip-value"><?= ucfirst($order['shape'] ?? 'round') ?></div>
     </div>
+    <?php if ((float)($order['additional_cost'] ?? 0) > 0): ?>
+    <div style="margin-top: 8px;">
+        <div class="slip-label">Additional Cost</div>
+        <div class="slip-value">$<?= number_format((float)$order['additional_cost'], 2) ?></div>
+    </div>
+    <?php endif; ?>
 </div>
 
 <?php if ($order['inscription']): ?>

@@ -20,6 +20,9 @@ const POS = window.POS = (function () {
     let productSearchTerm  = '';
     const cfg = window.BFPOS_CONFIG || {};
     const currency = cfg.currency || '$';
+    const RECEIPT_PAPER_WIDTH_MM = 72;
+    const RECEIPT_CONTENT_WIDTH_MM = 70;
+    const RECEIPT_PRINT_PADDING_MM = 2;
 
     // ── Dialog helpers (replace native confirm/alert) ──────────
     let _dialogResolve = null;
@@ -61,6 +64,22 @@ const POS = window.POS = (function () {
         if (!iso) return '';
         const d = new Date(iso);
         return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+    }
+
+    function fmtReceiptTimestamp(value) {
+        if (!value) return '';
+
+        const normalized = String(value).includes('T')
+            ? String(value)
+            : String(value).replace(' ', 'T');
+        const date = new Date(normalized);
+
+        if (Number.isNaN(date.getTime())) {
+            return String(value);
+        }
+
+        const pad = num => String(num).padStart(2, '0');
+        return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
     }
 
     // ── Clock ──────────────────────────────────────────────────
@@ -410,6 +429,7 @@ const POS = window.POS = (function () {
         if (cake.size_name)   parts.push(cake.size_name);
         if (cake.flavour_name) parts.push(cake.flavour_name);
         if (cake.shape === 'square') parts.push('Square');
+        if ((cake.additional_cost || 0) > 0) parts.push(`Extras: ${fmt(cake.additional_cost)}`);
         if (cake.inscription) parts.push(`"${cake.inscription}"`);
         if (cake.pickup_date) parts.push(`Pickup: ${fmtDate(cake.pickup_date)}`);
         if (cake.payment_choice === 'deposit') parts.push(`Deposit: ${fmt(cake.deposit_amount)}`);
@@ -417,6 +437,12 @@ const POS = window.POS = (function () {
     }
 
     // ── Payment ─────────────────────────────────────────────────
+    function getCakeAdditionalCost() {
+        const value = parseFloat(document.getElementById('cake-extra-cost')?.value || '0');
+        if (!Number.isFinite(value) || value < 0) return 0;
+        return round2(value);
+    }
+
     function openPayment() {
         if (cart.length === 0) return;
         const totals = calcTotal();
@@ -664,11 +690,17 @@ const POS = window.POS = (function () {
         lastReceiptData = receipt;
         renderReceiptHtml(receipt);
         document.getElementById('receipt-modal').classList.remove('hidden');
+        refreshReceiptPrinterStatus();
+
+        if (cfg.receiptAutoPrint) {
+            setTimeout(() => { printReceipt(); }, 150);
+        }
     }
 
     function renderReceiptHtml(r) {
         const area = document.getElementById('receipt-print-area');
         const change = round2((r.cash_tendered || 0) - r.total);
+        const createdAt = fmtReceiptTimestamp(r.created_at);
 
         let itemsHtml = '';
         (r.items || []).forEach(item => {
@@ -684,6 +716,8 @@ const POS = window.POS = (function () {
                     itemsHtml += `<div class="receipt-row-indent"><span>${escHtml([ck.size_name, ck.flavour_name].filter(Boolean).join(', '))}</span><span></span></div>`;
                 if (ck.shape === 'square')
                     itemsHtml += `<div class="receipt-row-indent"><span>Square shape</span><span></span></div>`;
+                if ((ck.additional_cost || 0) > 0)
+                    itemsHtml += `<div class="receipt-row-indent"><span>Additional cost</span><span>${fmt(ck.additional_cost)}</span></div>`;
                 if (ck.inscription)
                     itemsHtml += `<div class="receipt-row-indent"><span>"${escHtml(ck.inscription)}"</span><span></span></div>`;
                 if (ck.pickup_date)
@@ -704,11 +738,13 @@ const POS = window.POS = (function () {
             <div class="receipt-shop-name">${escHtml(r.shop_name || cfg.shopName)}</div>
             <div class="receipt-shop-info">
                 ${r.shop_address ? escHtml(r.shop_address) + '<br>' : ''}
-                ${r.shop_phone   ? escHtml(r.shop_phone)           : ''}
+                ${r.shop_phone   ? escHtml(r.shop_phone) + '<br>'  : ''}
+                ${r.shop_email   ? escHtml(r.shop_email)           : ''}
             </div>
+            ${r.receipt_header ? `<div class="receipt-footer-text">${escHtmlWithBreaks(r.receipt_header)}</div>` : ''}
             <hr class="receipt-divider">
             <div class="receipt-row"><span>Receipt #</span><span>${escHtml(r.transaction_ref)}</span></div>
-            <div class="receipt-row"><span>Date</span><span>${escHtml(r.created_at)}</span></div>
+            <div class="receipt-row"><span>Date</span><span>${escHtml(createdAt)}</span></div>
             <div class="receipt-row"><span>Cashier</span><span>${escHtml(r.cashier_name || cfg.cashierName)}</span></div>
             <hr class="receipt-divider">
             ${itemsHtml}
@@ -725,9 +761,10 @@ const POS = window.POS = (function () {
             ` : ''}
             ${r.payment_method === 'card' ? `<div class="receipt-row"><span>Card Payment</span><span>${fmt(r.total)}</span></div>` : ''}
             ${r.payment_method === 'mobile' ? `<div class="receipt-row"><span>Mobile Payment</span><span>${fmt(r.total)}</span></div>` : ''}
+            ${r.payment_method === 'split' && (r.card_amount || 0) > 0 ? `<div class="receipt-row"><span>Card Portion</span><span>${fmt(r.card_amount)}</span></div>` : ''}
             ${r.reference_number ? `<div class="receipt-row"><span>Reference</span><span>${escHtml(r.reference_number)}</span></div>` : ''}
             <hr class="receipt-divider">
-            <div class="receipt-footer-text">${escHtml(r.receipt_footer || 'Thank you!')}</div>
+            <div class="receipt-footer-text">${escHtmlWithBreaks(r.receipt_footer || 'Thank you!')}</div>
         `;
     }
 
@@ -735,12 +772,259 @@ const POS = window.POS = (function () {
         document.getElementById('receipt-modal').classList.add('hidden');
     }
 
-    function printReceipt() {
-        window.print();
+    function setReceiptStatus(message, tone) {
+        const el = document.getElementById('receipt-print-status');
+        if (!el) return;
+
+        const palette = {
+            muted: 'var(--text-muted)',
+            success: '#2d8653',
+            warning: '#b06d00',
+            error: '#c0392b',
+        };
+
+        el.textContent = message || '';
+        el.style.color = palette[tone] || palette.muted;
+    }
+    function pxToMm(px) {
+        return (px * 25.4) / 96;
+    }
+
+    function buildBrowserReceiptPrintStyles(pageHeightMm) {
+        return `
+            @page {
+                size: ${RECEIPT_PAPER_WIDTH_MM}mm ${pageHeightMm.toFixed(2)}mm;
+                margin: 0;
+            }
+
+            html,
+            body {
+                margin: 0;
+                padding: 0;
+                width: ${RECEIPT_PAPER_WIDTH_MM}mm;
+                background: #fff;
+                overflow: hidden;
+            }
+
+            body {
+                font-family: "Courier New", Courier, monospace;
+                font-size: 11px;
+                line-height: 1.35;
+                color: #000;
+            }
+
+            #receipt-print-area {
+                box-sizing: border-box;
+                width: ${RECEIPT_CONTENT_WIDTH_MM}mm;
+                max-width: ${RECEIPT_CONTENT_WIDTH_MM}mm;
+                padding: ${RECEIPT_PRINT_PADDING_MM}mm;
+                margin: 0;
+                color: #000;
+                background: #fff;
+            }
+
+            .receipt-shop-name {
+                font-size: 14px;
+                font-weight: 700;
+                text-align: center;
+                margin-bottom: 1mm;
+            }
+
+            .receipt-shop-info,
+            .receipt-footer-text {
+                text-align: center;
+                font-size: 10px;
+                color: #000;
+            }
+
+            .receipt-divider {
+                border: none;
+                border-top: 1px dashed #000;
+                margin: 1.5mm 0;
+            }
+
+            .receipt-row,
+            .receipt-row-indent {
+                display: flex;
+                align-items: flex-start;
+                justify-content: space-between;
+                gap: 2mm;
+            }
+
+            .receipt-row-indent {
+                padding-left: 4mm;
+                font-size: 10px;
+                color: #000;
+            }
+
+            .receipt-row > span:first-child,
+            .receipt-row-indent > span:first-child {
+                flex: 1 1 auto;
+                min-width: 0;
+                white-space: normal;
+                overflow-wrap: anywhere;
+            }
+
+            .receipt-row > span:last-child,
+            .receipt-row-indent > span:last-child {
+                flex: 0 0 auto;
+                margin-left: 2mm;
+                text-align: right;
+                white-space: nowrap;
+                font-weight: 700;
+            }
+
+            .receipt-total-block {
+                padding: 0.5mm 0;
+            }
+
+            .receipt-grand-total,
+            .receipt-balance,
+            .receipt-paid-full {
+                font-weight: 700;
+            }
+        `;
+    }
+
+    function measureBrowserReceiptHeightMm() {
+        const area = document.getElementById('receipt-print-area');
+        if (!area) {
+            return 120;
+        }
+
+        const sandbox = document.createElement('div');
+        sandbox.style.position = 'fixed';
+        sandbox.style.left = '-10000px';
+        sandbox.style.top = '0';
+        sandbox.style.width = `${RECEIPT_PAPER_WIDTH_MM}mm`;
+        sandbox.style.visibility = 'hidden';
+        sandbox.style.pointerEvents = 'none';
+        sandbox.innerHTML = `<style>${buildBrowserReceiptPrintStyles(200)}</style>${area.outerHTML}`;
+        document.body.appendChild(sandbox);
+
+        const receipt = sandbox.querySelector('#receipt-print-area');
+        const heightPx = receipt ? receipt.scrollHeight : area.scrollHeight;
+        sandbox.remove();
+
+        return Math.max(45, pxToMm(heightPx) + 4);
+    }
+
+    function printReceiptWithBrowser() {
+        const area = document.getElementById('receipt-print-area');
+        if (!area) {
+            window.print();
+            return;
+        }
+
+        const pageHeightMm = measureBrowserReceiptHeightMm();
+        const title = escHtml(lastReceiptData && lastReceiptData.transaction_ref ? lastReceiptData.transaction_ref : 'Receipt');
+        const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>${title}</title>
+    <style>${buildBrowserReceiptPrintStyles(pageHeightMm)}</style>
+</head>
+<body>${area.outerHTML}</body>
+</html>`;
+
+        const frame = document.createElement('iframe');
+        frame.style.position = 'fixed';
+        frame.style.right = '0';
+        frame.style.bottom = '0';
+        frame.style.width = '0';
+        frame.style.height = '0';
+        frame.style.border = '0';
+        frame.style.opacity = '0';
+        document.body.appendChild(frame);
+
+        const cleanup = () => {
+            setTimeout(() => {
+                frame.remove();
+            }, 200);
+        };
+
+        frame.onload = function() {
+            const printWindow = frame.contentWindow;
+            if (!printWindow) {
+                cleanup();
+                window.print();
+                return;
+            }
+
+            printWindow.onafterprint = cleanup;
+            setTimeout(() => {
+                printWindow.focus();
+                printWindow.print();
+            }, 120);
+        };
+
+        const doc = frame.contentWindow ? frame.contentWindow.document : null;
+        if (!doc) {
+            cleanup();
+            window.print();
+            return;
+        }
+
+        doc.open();
+        doc.write(html);
+        doc.close();
+    }
+
+    function refreshReceiptPrinterStatus() {
+        setReceiptStatus('Receipt prints directly to the configured Windows receipt printer on this terminal. Browser print is used only as a fallback.', 'muted');
+    }
+
+    async function printReceiptDirectly() {
+        const transactionId = Number((lastReceiptData && lastReceiptData.transaction_id) || lastTransactionId || 0);
+        if (!transactionId) {
+            throw new Error('Transaction ID is missing for this receipt.');
+        }
+
+        const res = await fetch('/api/print/receipt', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-Token': cfg.csrfToken || '',
+            },
+            body: JSON.stringify({
+                transaction_id: transactionId,
+            }),
+        });
+        const data = await res.json();
+
+        if (!res.ok || !data.success) {
+            throw new Error(data.error || 'Receipt printer did not accept the job.');
+        }
+
+        return data;
+    }
+
+    async function printReceipt() {
+        if (!lastReceiptData) {
+            _posAlert('No receipt is available to print yet.');
+            return;
+        }
+
+        setReceiptStatus('Sending receipt to printer...', 'muted');
+
+        try {
+            const result = await printReceiptDirectly();
+            const printerName = result && result.printer_name ? result.printer_name : 'default printer';
+            setReceiptStatus(`Printed on ${printerName}.`, 'success');
+        } catch (error) {
+            setReceiptStatus('Direct print failed. Opening browser print window...', 'warning');
+            setTimeout(() => {
+                printReceiptWithBrowser();
+            }, 120);
+        }
     }
 
     function newSale() {
         closeReceipt();
+        lastReceiptData = null;
+        setReceiptStatus('', 'muted');
         cart = [];
         renderCart();
     }
@@ -777,6 +1061,7 @@ const POS = window.POS = (function () {
         document.getElementById('cake-inscription').value = '';
         document.getElementById('cake-pickup').value      = '';
         document.getElementById('cake-notes').value       = '';
+        document.getElementById('cake-extra-cost').value  = '';
         document.getElementById('cake-price-display').textContent = fmt(0);
         document.getElementById('cake-deposit-display').textContent = fmt(0);
         document.getElementById('cake-balance-display').textContent = fmt(0);
@@ -803,8 +1088,9 @@ const POS = window.POS = (function () {
         const shapeEl = document.querySelector('.shape-btn[data-shape].active');
         const sel     = sizeEl.options[sizeEl.selectedIndex];
         const base    = parseFloat(sel ? (sel.getAttribute('data-price') || 0) : 0);
-        const extra   = (shapeEl && shapeEl.getAttribute('data-shape') === 'square') ? 5 : 0;
-        const total   = round2(base + extra);
+        const shapeExtra = (shapeEl && shapeEl.getAttribute('data-shape') === 'square') ? 5 : 0;
+        const additionalCost = getCakeAdditionalCost();
+        const total   = round2(base + shapeExtra + additionalCost);
         const deposit = parseFloat(sel ? (sel.getAttribute('data-deposit') || 0) : 0);
         const balance = round2(total - deposit);
         document.getElementById('cake-price-display').textContent = fmt(total);
@@ -844,8 +1130,14 @@ const POS = window.POS = (function () {
         const sel      = sizeEl.options[sizeEl.selectedIndex];
         const base     = parseFloat(sel.getAttribute('data-price') || 0);
         const deposit  = parseFloat(sel.getAttribute('data-deposit') || 0);
-        const extra    = (shapeEl && shapeEl.getAttribute('data-shape') === 'square') ? 5 : 0;
-        const fullPrice = round2(base + extra);
+        const rawAdditionalCost = parseFloat(document.getElementById('cake-extra-cost').value || '0');
+        if (Number.isFinite(rawAdditionalCost) && rawAdditionalCost < 0) {
+            _posAlert('Additional cost cannot be negative.');
+            return;
+        }
+        const shapeExtra = (shapeEl && shapeEl.getAttribute('data-shape') === 'square') ? 5 : 0;
+        const additionalCost = getCakeAdditionalCost();
+        const fullPrice = round2(base + shapeExtra + additionalCost);
         const shape    = shapeEl ? shapeEl.getAttribute('data-shape') : 'round';
         const isDeposit = cakePaymentChoice === 'deposit';
         const payAmount = isDeposit ? deposit : fullPrice;
@@ -868,6 +1160,7 @@ const POS = window.POS = (function () {
             inscription:    document.getElementById('cake-inscription').value.trim(),
             pickup_date:    document.getElementById('cake-pickup').value,
             notes:          document.getElementById('cake-notes').value.trim(),
+            additional_cost: additionalCost,
             payment_choice: cakePaymentChoice,
             deposit_amount: deposit,
             full_price:     fullPrice,
@@ -953,7 +1246,10 @@ const POS = window.POS = (function () {
 
             let html = '<div class="pickup-list">';
             data.orders.forEach(o => {
-                const details = [o.size_name, o.flavour_name].filter(Boolean).join(', ');
+                const detailParts = [o.size_name, o.flavour_name].filter(Boolean);
+                if (o.shape === 'square') detailParts.push('Square');
+                if ((o.additional_cost || 0) > 0) detailParts.push(`Extras ${fmt(o.additional_cost)}`);
+                const details = detailParts.join(', ');
                 const pickupStr = o.pickup_date ? fmtDate(o.pickup_date) : 'No date set';
                 const badge = statusBadges[o.order_status] || '';
                 const isReady = o.order_status === 'ready';
@@ -970,7 +1266,7 @@ const POS = window.POS = (function () {
                     <div class="pickup-item">
                         <div class="pickup-info">
                             <div class="pickup-date">${escHtml(pickupStr)} ${badge}</div>
-                            <div class="pickup-detail">${escHtml(details)}${o.shape === 'square' ? ' (Square)' : ''}</div>
+                            <div class="pickup-detail">${escHtml(details)}</div>
                             ${o.customer_name ? `<div class="pickup-detail">${escHtml(o.customer_name)}${o.customer_phone ? ' — ' + escHtml(o.customer_phone) : ''}</div>` : ''}
                             <div class="pickup-detail">Ref: ${escHtml(o.transaction_ref || '')}</div>
                         </div>
@@ -1206,6 +1502,10 @@ const POS = window.POS = (function () {
             .replace(/'/g, '&#39;');
     }
 
+    function escHtmlWithBreaks(str) {
+        return escHtml(str).replace(/\r?\n/g, '<br>');
+    }
+
     // ── Init ────────────────────────────────────────────────────
     function init() {
         startClock();
@@ -1242,6 +1542,7 @@ const POS = window.POS = (function () {
                 loadProducts(true);
             }
         });
+
     }
 
     // Public API

@@ -22,6 +22,7 @@ class CakeOrderController extends BaseController
 
         $stmt = $db->prepare("
             SELECT co.id, co.pickup_date, co.shape, co.inscription,
+                   co.additional_cost,
                    co.full_price, co.deposit_amount, co.amount_paid,
                    co.balance_due, co.payment_status, co.order_status,
                    co.customer_name, co.customer_phone,
@@ -47,6 +48,7 @@ class CakeOrderController extends BaseController
 
         foreach ($orders as &$o) {
             $o['id']             = (int)$o['id'];
+            $o['additional_cost']= (float)$o['additional_cost'];
             $o['full_price']     = (float)$o['full_price'];
             $o['deposit_amount'] = (float)$o['deposit_amount'];
             $o['amount_paid']    = (float)$o['amount_paid'];
@@ -252,6 +254,7 @@ class CakeOrderController extends BaseController
                 'shape'          => $cakeOrder['shape'] ?? null,
                 'inscription'    => $cakeOrder['inscription'] ?? null,
                 'pickup_date'    => $cakeOrder['pickup_date'] ?? null,
+                'additional_cost'=> (float)($cakeOrder['additional_cost'] ?? 0),
                 'payment_status' => 'paid',
                 'full_price'     => (float)$cakeOrder['full_price'],
                 'deposit_paid'   => (float)$cakeOrder['deposit_amount'],
@@ -268,6 +271,8 @@ class CakeOrderController extends BaseController
             'shop_name'       => $shop['name']           ?? '',
             'shop_address'    => $shop['address']        ?? '',
             'shop_phone'      => $shop['phone']          ?? '',
+            'shop_email'      => $shop['email']          ?? '',
+            'receipt_header'  => $shop['receipt_header'] ?? '',
             'receipt_footer'  => $shop['receipt_footer'] ?? 'Thank you!',
             'subtotal'        => (float)$transaction['subtotal'],
             'discount'        => (float)$transaction['discount'],

@@ -31,9 +31,16 @@ class PosController extends BaseController
         $idleTimeout  = (int)($settings['idle_timeout']  ?? 600);
         $terminalId   = $settings['terminal_id']         ?? 'TXN001';
         $currencySymbol = $shop['currency_symbol']        ?? '$';
+        $receiptAutoPrint = (int)($settings['receipt_auto_print'] ?? 0) === 1;
 
         View::renderNoLayout('pos.index', compact(
-            'shop', 'user', 'settings', 'idleTimeout', 'terminalId', 'currencySymbol'
+            'shop',
+            'user',
+            'settings',
+            'idleTimeout',
+            'terminalId',
+            'currencySymbol',
+            'receiptAutoPrint'
         ));
     }
 }

@@ -24,6 +24,7 @@ require_once APP_ROOT . '/app/Controllers/Admin/ProductionController.php';
 require_once APP_ROOT . '/app/Controllers/Api/ProductsController.php';
 require_once APP_ROOT . '/app/Controllers/Api/SaleController.php';
 require_once APP_ROOT . '/app/Controllers/Api/ReceiptController.php';
+require_once APP_ROOT . '/app/Controllers/Api/PrinterController.php';
 require_once APP_ROOT . '/app/Controllers/Api/SyncController.php';
 require_once APP_ROOT . '/app/Controllers/Api/CakeOrderController.php';
 require_once APP_ROOT . '/app/Controllers/Admin/CakeOrderController.php';

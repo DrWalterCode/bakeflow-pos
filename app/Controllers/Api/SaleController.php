@@ -77,11 +77,16 @@ class SaleController extends BaseController
             $unitPrice = (float)$product['price'];
             $isCake    = (bool)$product['is_cake'];
 
-            // For cakes, price is calculated from size + shape
+            // For cakes, price is calculated from size, shape, and any custom surcharge.
             $cakeDepositAmt = 0.0;
+            $cakeAdditionalCost = 0.0;
             if ($isCake && !empty($item['cake_data'])) {
                 $cakeData = $item['cake_data'];
                 $sizeId   = (int)($cakeData['size_id'] ?? 0);
+                $cakeAdditionalCost = round((float)($cakeData['additional_cost'] ?? 0), 2);
+                if ($cakeAdditionalCost < 0) {
+                    $this->jsonError('Cake additional cost cannot be negative.');
+                }
                 if ($sizeId > 0) {
                     $sizeStmt = $db->prepare("SELECT price_base, deposit_amount FROM cake_sizes WHERE id = ? AND is_active = 1");
                     $sizeStmt->execute([$sizeId]);
@@ -92,6 +97,7 @@ class SaleController extends BaseController
                         if (($cakeData['shape'] ?? 'round') === 'square') {
                             $unitPrice += 5.0;
                         }
+                        $unitPrice += $cakeAdditionalCost;
                     }
                 }
             }
@@ -116,6 +122,7 @@ class SaleController extends BaseController
                 'cake_data'      => $isCake ? ($item['cake_data'] ?? null) : null,
                 'cake_full_price'=> $unitPrice,
                 'cake_deposit'   => $cakeDepositAmt,
+                'cake_additional_cost' => $cakeAdditionalCost,
                 'payment_choice' => $paymentChoice,
             ];
         }
@@ -203,10 +210,10 @@ class SaleController extends BaseController
 
                     $stmt = $db->prepare("
                         INSERT INTO cake_orders
-                            (transaction_item_id, flavour_id, size_id, shape, inscription, pickup_date, notes,
+                            (transaction_item_id, flavour_id, size_id, shape, inscription, pickup_date, notes, additional_cost,
                              full_price, deposit_amount, amount_paid, balance_due, payment_status,
                              customer_name, customer_phone)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ");
                     $stmt->execute([
                         $itemId,
@@ -216,6 +223,7 @@ class SaleController extends BaseController
                         $ck['inscription'] ?? null,
                         ($pickupDate !== '' ? $pickupDate : null),
                         $ck['notes']       ?? null,
+                        $line['cake_additional_cost'],
                         $cakeFullPrice,
                         $cakeDeposit,
                         $amountPaid,
@@ -280,6 +288,7 @@ class SaleController extends BaseController
 
         $items = $db->prepare("
             SELECT ti.*, co.flavour_id, co.size_id, co.shape, co.inscription, co.pickup_date,
+                   co.additional_cost,
                    co.full_price, co.deposit_amount AS co_deposit_amount,
                    co.amount_paid, co.balance_due, co.payment_status,
                    co.customer_name,
@@ -309,6 +318,7 @@ class SaleController extends BaseController
                     'shape'          => $item['shape'],
                     'inscription'    => $item['inscription'],
                     'pickup_date'    => $item['pickup_date'],
+                    'additional_cost'=> (float)($item['additional_cost'] ?? 0),
                     'payment_status' => $item['payment_status'] ?? 'paid',
                     'full_price'     => (float)($item['full_price'] ?? $item['line_total']),
                     'deposit_paid'   => (float)($item['co_deposit_amount'] ?? 0),
@@ -327,6 +337,8 @@ class SaleController extends BaseController
             'shop_name'       => $shop['name']    ?? '',
             'shop_address'    => $shop['address'] ?? '',
             'shop_phone'      => $shop['phone']   ?? '',
+            'shop_email'      => $shop['email']   ?? '',
+            'receipt_header'  => $shop['receipt_header'] ?? '',
             'receipt_footer'  => $shop['receipt_footer'] ?? 'Thank you!',
             'subtotal'        => (float)$transaction['subtotal'],
             'discount'        => (float)$transaction['discount'],

@@ -6,9 +6,9 @@
 -- -----------------------------------------------------
 -- Default shop
 -- -----------------------------------------------------
-INSERT INTO shops (id, name, address, phone, receipt_header, receipt_footer, primary_color, currency_symbol)
-VALUES (1, 'BakeFlow Bakery', '123 Main Street', '+1 555 0100',
-        'Thank you for your purchase!', 'Come back soon!', '#C4748E', '$');
+INSERT INTO shops (id, name, address, phone, email, receipt_header, receipt_footer, primary_color, currency_symbol)
+VALUES (1, 'BakeFlow Bakery', '123 Main Street', '+263 77 226 4471', 'sales@zimbocrumbbakery.co.zw',
+        'Thank you for your purchase!', 'We value your feedback. Please send feedback on WhatsApp to +263 77 226 4471 or email sales@zimbocrumbbakery.co.zw.', '#C4748E', '$');
 
 -- -----------------------------------------------------
 -- Default users
@@ -139,7 +139,9 @@ INSERT INTO settings (key, value) VALUES
     ('sync_interval',       '300'),
     ('sync_remote_url',     ''),
     ('sync_api_key',        ''),
-    ('receipt_copies',      '1'),
+    ('receipt_auto_print',  '0'),
+    ('receipt_printer_name',''),
+    ('receipt_open_drawer', '1'),
     ('tax_rate',            '0'),
     ('currency_symbol',     '$'),
     ('products_cache_ttl',  '300');

@@ -13,7 +13,11 @@
                 <div class="card-body">
                     <div class="mb-3"><label class="form-label">Shop Name</label><input type="text" name="shop_name" class="form-control" value="<?= htmlspecialchars($shop['name'] ?? '', ENT_QUOTES, 'UTF-8') ?>" required></div>
                     <div class="mb-3"><label class="form-label">Address</label><input type="text" name="shop_address" class="form-control" value="<?= htmlspecialchars($shop['address'] ?? '', ENT_QUOTES, 'UTF-8') ?>"></div>
-                    <div class="mb-3"><label class="form-label">Phone</label><input type="tel" name="shop_phone" class="form-control" placeholder="+263 7X XXX XXXX" pattern="\+263\s?7[0-9]{1}\s?[0-9]{3}\s?[0-9]{4}" title="Zimbabwean number: +263 7X XXX XXXX" value="<?= htmlspecialchars($shop['phone'] ?? '', ENT_QUOTES, 'UTF-8') ?>"></div>
+                    <div class="mb-3">
+                        <label class="form-label">Phone</label>
+                        <input type="text" name="shop_phone" class="form-control" inputmode="tel" placeholder="+263 77 226 4471, +263 77 332 4050" value="<?= htmlspecialchars($shop['phone'] ?? '', ENT_QUOTES, 'UTF-8') ?>">
+                        <small class="text-muted">Use commas to save more than one phone number.</small>
+                    </div>
                     <div class="mb-3"><label class="form-label">Email</label><input type="email" name="shop_email" class="form-control" value="<?= htmlspecialchars($shop['email'] ?? '', ENT_QUOTES, 'UTF-8') ?>"></div>
                     <div class="row">
                         <div class="col">
@@ -35,7 +39,34 @@
                 <div class="card-header"><h6 class="mb-0">Receipt & Terminal</h6></div>
                 <div class="card-body">
                     <div class="mb-3"><label class="form-label">Receipt Header Message</label><input type="text" name="receipt_header" class="form-control" value="<?= htmlspecialchars($shop['receipt_header'] ?? '', ENT_QUOTES, 'UTF-8') ?>"></div>
-                    <div class="mb-3"><label class="form-label">Receipt Footer Message</label><input type="text" name="receipt_footer" class="form-control" value="<?= htmlspecialchars($shop['receipt_footer'] ?? '', ENT_QUOTES, 'UTF-8') ?>"></div>
+                    <div class="mb-3">
+                        <label class="form-label">Receipt Footer / Feedback Message</label>
+                        <textarea name="receipt_footer" class="form-control" rows="3"><?= htmlspecialchars($shop['receipt_footer'] ?? '', ENT_QUOTES, 'UTF-8') ?></textarea>
+                        <small class="text-muted">This prints at the bottom of the receipt. Use it for your thank-you note or a feedback message that points customers to WhatsApp or email.</small>
+                    </div>
+                    <div class="form-check mb-2">
+                        <input class="form-check-input" type="checkbox" value="1" id="receipt_auto_print" name="receipt_auto_print" <?= (int)($settings['receipt_auto_print'] ?? 0) === 1 ? 'checked' : '' ?>>
+                        <label class="form-check-label" for="receipt_auto_print">Auto-print receipt after payment</label>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label" for="receipt_printer_name">Windows Printer Queue Name</label>
+                        <input
+                            type="text"
+                            id="receipt_printer_name"
+                            name="receipt_printer_name"
+                            class="form-control"
+                            value="<?= htmlspecialchars($settings['receipt_printer_name'] ?? '', ENT_QUOTES, 'UTF-8') ?>"
+                            placeholder="Leave blank to use the Windows default printer"
+                        >
+                        <small class="text-muted">Use the exact Windows printer name for this terminal, for example <code>XP-90</code>. Leave blank to print to the default Windows printer.</small>
+                    </div>
+                    <div class="form-check mb-3">
+                        <input class="form-check-input" type="checkbox" value="1" id="receipt_open_drawer" name="receipt_open_drawer" <?= ($settings['receipt_open_drawer'] ?? '1') === '1' ? 'checked' : '' ?>>
+                        <label class="form-check-label" for="receipt_open_drawer">Open cash drawer on cash and split receipts</label>
+                    </div>
+                    <div class="alert alert-light border mb-3" role="alert">
+                        <strong>Receipt printing:</strong> BakeFlow sends receipts straight to the Windows printer on this terminal. If a queue name is saved above, BakeFlow uses that queue. If it is blank, BakeFlow uses the default Windows printer. Browser print is only used if the direct print helper fails.
+                    </div>
                     <div class="mb-3"><label class="form-label">Terminal ID</label><input type="text" name="terminal_id" class="form-control" value="<?= htmlspecialchars($settings['terminal_id'] ?? 'TXN001', ENT_QUOTES, 'UTF-8') ?>"></div>
                     <div class="mb-3"><label class="form-label">Auto-Logout (idle seconds)</label><input type="number" name="idle_timeout" class="form-control" value="<?= (int)($settings['idle_timeout'] ?? 600) ?>" min="60"></div>
                 </div>
@@ -65,8 +96,6 @@
                 </div>
             </div>
         </div>
-    </div>
-
         <!-- Cake Deposit Amounts -->
         <div class="col-12">
             <div class="card">

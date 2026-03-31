@@ -36,6 +36,7 @@ class ReceiptController extends BaseController
 
         $stmt = $db->prepare("
             SELECT ti.*, co.shape, co.inscription, co.pickup_date,
+                   co.additional_cost,
                    co.full_price, co.deposit_amount AS co_deposit_amount,
                    co.amount_paid, co.balance_due, co.payment_status,
                    co.customer_name,
@@ -65,6 +66,7 @@ class ReceiptController extends BaseController
                     'shape'          => $row['shape'],
                     'inscription'    => $row['inscription'],
                     'pickup_date'    => $row['pickup_date'],
+                    'additional_cost'=> (float)($row['additional_cost'] ?? 0),
                     'payment_status' => $row['payment_status'] ?? 'paid',
                     'full_price'     => (float)($row['full_price'] ?? $row['line_total']),
                     'deposit_paid'   => (float)($row['co_deposit_amount'] ?? 0),
@@ -83,6 +85,8 @@ class ReceiptController extends BaseController
             'shop_name'       => $shop['name']           ?? '',
             'shop_address'    => $shop['address']        ?? '',
             'shop_phone'      => $shop['phone']          ?? '',
+            'shop_email'      => $shop['email']          ?? '',
+            'receipt_header'  => $shop['receipt_header'] ?? '',
             'receipt_footer'  => $shop['receipt_footer'] ?? 'Thank you!',
             'subtotal'        => (float)$transaction['subtotal'],
             'discount'        => (float)$transaction['discount'],

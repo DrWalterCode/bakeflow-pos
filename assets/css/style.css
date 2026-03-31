@@ -1319,19 +1319,26 @@ html, body {
 #receipt-print-area {
     padding: 20px;
     font-family: 'Courier New', Courier, monospace;
-    font-size: 0.82rem;
-    line-height: 1.6;
-    color: var(--text);
+    font-size: 0.84rem;
+    line-height: 1.45;
+    color: #1a1a1a;
 }
 
 .receipt-shop-name   { font-size: 1.1rem; font-weight: 700; text-align: center; margin-bottom: 2px; }
 .receipt-shop-info   { text-align: center; color: var(--text-muted); font-size: 0.75rem; margin-bottom: 12px; }
 .receipt-divider     { border: none; border-top: 1px dashed var(--border); margin: 8px 0; }
-.receipt-row         { display: flex; justify-content: space-between; }
-.receipt-row-indent  { display: flex; justify-content: space-between; padding-left: 14px; color: var(--text-muted); font-size: 0.75rem; }
+.receipt-row,
+.receipt-row-indent  { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.receipt-row > span:first-child,
+.receipt-row-indent > span:first-child { flex: 1 1 auto; min-width: 0; white-space: normal; overflow-wrap: anywhere; }
+.receipt-row > span:last-child,
+.receipt-row-indent > span:last-child  { flex: 0 0 auto; text-align: right; white-space: nowrap; font-weight: 700; }
+.receipt-row-indent  { padding-left: 14px; color: var(--text-muted); font-size: 0.75rem; }
 .receipt-total-block { margin-top: 8px; }
-.receipt-grand-total { font-size: 1rem; font-weight: 700; }
+.receipt-grand-total { font-size: 1rem; font-weight: 700; color: #000; }
 .receipt-footer-text { text-align: center; color: var(--text-muted); font-size: 0.75rem; margin-top: 12px; }
+.receipt-balance,
+.receipt-paid-full { font-weight: 700; color: #000; }
 
 .receipt-actions {
     display: flex;
@@ -1473,6 +1480,12 @@ html, body {
    PRINT STYLES
    ============================================================ */
 @media print {
+    @page {
+        margin: 0;
+        size: 72mm auto;
+    }
+
+    /* Hide everything except the receipt */
     body * { visibility: hidden; }
 
     #receipt-print-area,
@@ -1482,22 +1495,30 @@ html, body {
         position: fixed;
         top: 0;
         left: 0;
-        width: 80mm;
-        padding: 8px;
+        width: 70mm;          /* 72mm printable area minus small margin */
+        max-width: 70mm;
+        padding: 2mm;
+        margin: 0;
         font-family: 'Courier New', Courier, monospace;
         font-size: 11px;
-        line-height: 1.5;
+        line-height: 1.4;
         color: #000 !important;
         background: #fff !important;
+        overflow: visible;
     }
 
-    .receipt-shop-name  { font-size: 14px; font-weight: bold; text-align: center; }
+    .receipt-shop-name  { font-size: 13px; font-weight: bold; text-align: center; }
     .receipt-shop-info  { text-align: center; font-size: 10px; }
-    .receipt-divider    { border-top: 1px dashed #000; margin: 4px 0; }
+    .receipt-divider    { border-top: 1px dashed #000; margin: 3px 0; }
     .receipt-row,
-    .receipt-row-indent { display: flex; justify-content: space-between; }
+    .receipt-row-indent { display: flex; justify-content: space-between; gap: 4px; }
+    .receipt-row > span:first-child,
+    .receipt-row-indent > span:first-child { flex: 1 1 auto; min-width: 0; white-space: normal; overflow-wrap: anywhere; }
+    .receipt-row > span:last-child,
+    .receipt-row-indent > span:last-child  { flex: 0 0 auto; margin-left: 4px; white-space: nowrap; text-align: right; font-weight: 700; }
     .receipt-grand-total { font-weight: bold; }
     .receipt-footer-text { text-align: center; font-size: 10px; }
+    .receipt-total-block { padding: 2px 0; }
 }
 
 /* ============================================================

@@ -47,11 +47,9 @@ bakeflow-pos/
 
 ## Development
 
-Local stack uses **XAMPP** (PHP 8.2 via `C:\xampp\php\php.exe`).
-
 ```bash
 # Start dev server (webroot is site/)
-C:\xampp\php\php.exe -S localhost:8080 -t "site/"
+php -S localhost:8080 -t "site/"
 ```
 
 Visit: http://localhost:8080/login

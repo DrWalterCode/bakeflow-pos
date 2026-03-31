@@ -56,6 +56,11 @@ class SettingsController extends BaseController
             $this->redirect('/admin/settings', 'Invalid email address.', 'error');
         }
 
+        $shopPhone = trim((string)($_POST['shop_phone'] ?? ''));
+        if ($shopPhone !== '') {
+            $shopPhone = preg_replace('/\s*,\s*/', ', ', $shopPhone) ?? $shopPhone;
+        }
+
         $db = Database::getConnection();
 
         // Save shop info
@@ -63,7 +68,7 @@ class SettingsController extends BaseController
            ->execute([
                $shopName,
                trim($_POST['shop_address']    ?? ''),
-               trim($_POST['shop_phone']      ?? ''),
+               $shopPhone,
                $shopEmail,
                trim($_POST['receipt_header']  ?? ''),
                trim($_POST['receipt_footer']  ?? ''),
@@ -72,13 +77,30 @@ class SettingsController extends BaseController
            ]);
 
         // Save settings
-        $keys = ['terminal_id','idle_timeout','sync_interval','sync_remote_url','receipt_copies','tax_rate'];
+        $keys = [
+            'terminal_id',
+            'idle_timeout',
+            'sync_interval',
+            'sync_remote_url',
+            'tax_rate',
+            'receipt_printer_name',
+        ];
         foreach ($keys as $key) {
             if (isset($_POST[$key])) {
                 $db->prepare("INSERT INTO settings (`key`, value, updated_at) VALUES (?, ?, NOW())
                               ON DUPLICATE KEY UPDATE value = VALUES(value), updated_at = NOW()")
                    ->execute([$key, trim($_POST[$key])]);
             }
+        }
+
+        $checkboxSettings = [
+            'receipt_auto_print' => isset($_POST['receipt_auto_print']) ? '1' : '0',
+            'receipt_open_drawer' => isset($_POST['receipt_open_drawer']) ? '1' : '0',
+        ];
+        foreach ($checkboxSettings as $key => $value) {
+            $db->prepare("INSERT INTO settings (`key`, value, updated_at) VALUES (?, ?, NOW())
+                          ON DUPLICATE KEY UPDATE value = VALUES(value), updated_at = NOW()")
+               ->execute([$key, $value]);
         }
 
         // Save cake deposit amounts

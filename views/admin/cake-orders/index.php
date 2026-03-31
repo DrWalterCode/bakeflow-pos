@@ -135,6 +135,9 @@
                                 </td>
                                 <td>
                                     $<?= number_format((float)$order['full_price'], 2) ?>
+                                    <?php if ((float)($order['additional_cost'] ?? 0) > 0): ?>
+                                        <br><small class="text-muted">Extras: $<?= number_format((float)$order['additional_cost'], 2) ?></small>
+                                    <?php endif; ?>
                                     <?php if ((float)$order['balance_due'] > 0): ?>
                                         <br><small class="text-warning fw-bold">Bal: $<?= number_format((float)$order['balance_due'], 2) ?></small>
                                     <?php endif; ?>

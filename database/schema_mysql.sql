@@ -149,6 +149,7 @@ CREATE TABLE IF NOT EXISTS cake_orders (
     inscription             VARCHAR(500) NULL,
     pickup_date             DATE         NULL,
     notes                   TEXT         NULL,
+    additional_cost         DECIMAL(10,2) NOT NULL DEFAULT 0,
     full_price              DECIMAL(10,2) NOT NULL DEFAULT 0,
     deposit_amount          DECIMAL(10,2) NOT NULL DEFAULT 0,
     amount_paid             DECIMAL(10,2) NOT NULL DEFAULT 0,

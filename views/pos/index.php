@@ -10,7 +10,7 @@
 
 <!-- Hidden data for JS -->
 <script>
-const BFPOS_CONFIG = {
+window.BFPOS_CONFIG = {
     csrfToken:      '<?= htmlspecialchars($csrfToken, ENT_QUOTES, 'UTF-8') ?>',
     cashierName:    '<?= htmlspecialchars($user['name'], ENT_QUOTES, 'UTF-8') ?>',
     cashierId:      <?= (int)$user['id'] ?>,
@@ -19,6 +19,7 @@ const BFPOS_CONFIG = {
     idleTimeout:    <?= $idleTimeout ?>,
     primaryColor:   '<?= htmlspecialchars($shop['primary_color'] ?? '#E8631A', ENT_QUOTES, 'UTF-8') ?>',
     shopName:       '<?= htmlspecialchars($shop['name'], ENT_QUOTES, 'UTF-8') ?>',
+    receiptAutoPrint: <?= $receiptAutoPrint ? 'true' : 'false' ?>,
 };
 </script>
 
@@ -372,6 +373,7 @@ const BFPOS_CONFIG = {
         <div id="receipt-print-area">
             <!-- Populated by JS after sale -->
         </div>
+        <div id="receipt-print-status" style="padding: 0 20px 10px; font-size: 0.8rem; color: var(--text-muted);"></div>
 
         <div class="receipt-actions">
             <button class="btn-print" onclick="POS.printReceipt()">&#128424; Print</button>
@@ -417,6 +419,10 @@ const BFPOS_CONFIG = {
                     <label>Calculated Price</label>
                     <div id="cake-price-display" class="cake-price-display">$0.00</div>
                 </div>
+            </div>
+            <div class="form-field">
+                <label>Additional Cost (optional)</label>
+                <input type="number" id="cake-extra-cost" min="0" step="0.01" inputmode="decimal" placeholder="e.g. 5.00" oninput="POS.updateCakePrice()">
             </div>
             <div class="form-field">
                 <label>Inscription (optional)</label>
