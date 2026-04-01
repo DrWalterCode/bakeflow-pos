@@ -582,7 +582,8 @@ window.BFPOS_CONFIG = {
             <div id="endday-status-note" style="font-size: 0.85rem; color: var(--text-muted);"></div>
             <div style="display:flex; gap:10px; flex-wrap:wrap;">
                 <button class="btn-cancel" onclick="POS.closeEndDay()">Close</button>
-                <button class="btn-print" id="btn-print-endday" onclick="POS.printEndDay()">Print Day Slip</button>
+                <button class="btn-print" onclick="POS.downloadEndDay('pdf')">Download PDF</button>
+                <button class="btn-print" onclick="POS.downloadEndDay('excel')">Download Excel</button>
                 <button class="btn-cancel hidden" id="btn-reopen-endday" onclick="POS.reopenEndDay()">Reopen Day</button>
                 <button class="btn-add-cake hidden" id="btn-close-endday" onclick="POS.finalizeEndDay()">Close Day</button>
             </div>
