@@ -92,6 +92,7 @@ Router::get('/api/cake-orders/pending',              [CakeOrderController::class
 Router::post('/api/cake-orders/{id}/collect-balance', [CakeOrderController::class, 'collectBalance']);
 Router::post('/api/cake-orders/{id}/mark-collected',  [CakeOrderController::class, 'markCollected']);
 Router::post('/api/auth/heartbeat',  [AuthController::class, 'heartbeat']);
-Router::get('/api/reports/day-end',  [DayEndReportController::class, 'show']);
+Router::get('/api/reports/day-end',           [DayEndReportController::class, 'show']);
+Router::get('/api/reports/day-end/download', [DayEndReportController::class, 'download']);
 Router::post('/api/reports/day-end/close',  [DayEndReportController::class, 'close']);
 Router::post('/api/reports/day-end/reopen', [DayEndReportController::class, 'reopen']);

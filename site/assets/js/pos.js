@@ -1649,74 +1649,12 @@ const POS = window.POS = (function () {
         }
     }
 
-    function printEndDay() {
+    function downloadEndDay(format) {
         if (!dayEndReport) {
             _posAlert('No day-end report is loaded.');
             return;
         }
-
-        const area = document.getElementById('endday-print-area');
-        if (!area) {
-            _posAlert('Printable report content was not found.');
-            return;
-        }
-
-        const html = `<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>Day End ${escHtml(businessDate)}</title>
-    <style>
-        @page { size: 80mm auto; margin: 4mm; }
-        body { margin: 0; font-family: Arial, sans-serif; color: #111; font-size: 11px; }
-        h3, h4 { margin: 0 0 6px; }
-        small { color: #666; }
-        table { width: 100%; border-collapse: collapse; }
-        th, td { padding: 4px 0; vertical-align: top; }
-    </style>
-</head>
-<body>${area.outerHTML}</body>
-</html>`;
-
-        const frame = document.createElement('iframe');
-        frame.style.position = 'fixed';
-        frame.style.right = '0';
-        frame.style.bottom = '0';
-        frame.style.width = '0';
-        frame.style.height = '0';
-        frame.style.border = '0';
-        frame.style.opacity = '0';
-        document.body.appendChild(frame);
-
-        const cleanup = () => {
-            setTimeout(() => frame.remove(), 200);
-        };
-
-        frame.onload = function() {
-            const printWindow = frame.contentWindow;
-            if (!printWindow) {
-                cleanup();
-                window.print();
-                return;
-            }
-
-            printWindow.onafterprint = cleanup;
-            setTimeout(() => {
-                printWindow.focus();
-                printWindow.print();
-            }, 120);
-        };
-
-        const doc = frame.contentWindow ? frame.contentWindow.document : null;
-        if (!doc) {
-            cleanup();
-            window.print();
-            return;
-        }
-
-        doc.open();
-        doc.write(html);
-        doc.close();
+        window.location.href = '/api/reports/day-end/download?format=' + encodeURIComponent(format) + '&date=' + encodeURIComponent(businessDate);
     }
 
     // ── Cake Pickups ────────────────────────────────────────────
@@ -2104,7 +2042,7 @@ const POS = window.POS = (function () {
         closeEndDay,
         finalizeEndDay,
         reopenEndDay,
-        printEndDay,
+        downloadEndDay,
         handleKey,
         _dialogOk,
         _dialogCancel,
