@@ -16,11 +16,37 @@ class RemoteDatabase
             return self::$pdo;
         }
 
-        $host = Env::get('REMOTE_DB_HOST', '');
-        $port = Env::get('REMOTE_DB_PORT', '3306');
-        $db   = Env::get('REMOTE_DB_DATABASE', '');
-        $user = Env::get('REMOTE_DB_USERNAME', '');
-        $pass = Env::get('REMOTE_DB_PASSWORD', '');
+        // Try settings table first, fall back to .env
+        $host = '';
+        $port = '3306';
+        $db   = '';
+        $user = '';
+        $pass = '';
+
+        try {
+            $local = Database::getConnection();
+            $rows = $local->query("SELECT `key`, value FROM settings WHERE `key` IN ('remote_db_host','remote_db_port','remote_db_database','remote_db_username','remote_db_password')")->fetchAll();
+            $cfg = [];
+            foreach ($rows as $r) {
+                $cfg[$r['key']] = $r['value'];
+            }
+            $host = trim($cfg['remote_db_host'] ?? '');
+            $port = trim($cfg['remote_db_port'] ?? '3306');
+            $db   = trim($cfg['remote_db_database'] ?? '');
+            $user = trim($cfg['remote_db_username'] ?? '');
+            $pass = $cfg['remote_db_password'] ?? '';
+        } catch (\Throwable $e) {
+            // Local DB not available yet, ignore
+        }
+
+        // Fall back to .env if settings table had no host
+        if ($host === '') {
+            $host = Env::get('REMOTE_DB_HOST', '');
+            $port = Env::get('REMOTE_DB_PORT', '3306');
+            $db   = Env::get('REMOTE_DB_DATABASE', '');
+            $user = Env::get('REMOTE_DB_USERNAME', '');
+            $pass = Env::get('REMOTE_DB_PASSWORD', '');
+        }
 
         if ($host === '' || $db === '') {
             return null;

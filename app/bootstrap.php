@@ -14,6 +14,8 @@ require_once APP_ROOT . '/app/Core/Router.php';
 require_once APP_ROOT . '/app/Core/View.php';
 require_once APP_ROOT . '/app/Lib/PdfWriter.php';
 require_once APP_ROOT . '/app/Services/DayEndReportService.php';
+require_once APP_ROOT . '/app/Services/DatabaseBackupService.php';
+require_once APP_ROOT . '/app/Services/SystemResetService.php';
 require_once APP_ROOT . '/app/Controllers/BaseController.php';
 require_once APP_ROOT . '/app/Controllers/AuthController.php';
 require_once APP_ROOT . '/app/Controllers/PosController.php';

@@ -5,7 +5,11 @@
 ._*
 /mcp-cpanel/node_modules/
 /database/backups/
+/database/*.sqlite
+/database/*backup*.sqlite
 /storage/
+/tmp_test_output/
+/.vscode/
 /live-pos-menu*.png
 /pos-menu-preview.png
 /*.png

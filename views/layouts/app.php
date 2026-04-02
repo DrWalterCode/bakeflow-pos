@@ -8,6 +8,7 @@ $flashMessage = Session::getFlash('message');
 $flashType    = Session::getFlash('message_type', 'success');
 $currentPath  = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
 $authUser     = Auth::user();
+$csrfToken    = Session::generateCsrfToken();
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -502,6 +503,22 @@ $authUser     = Auth::user();
                     </a>
                     <div class="navbar-content">
                         <ul class="navbar-nav">
+                            <li class="nav-item me-2">
+                                <form action="/admin/settings/backup" method="POST" class="d-inline" id="adminBackupForm">
+                                    <input type="hidden" name="_csrf_token" value="<?= htmlspecialchars($csrfToken, ENT_QUOTES, 'UTF-8') ?>">
+                                    <button type="submit" class="btn btn-outline-primary btn-sm d-flex align-items-center gap-1" id="adminBackupBtn" title="Create a timestamped SQL backup">
+                                        <i data-lucide="database" class="icon-sm"></i>
+                                        <span>Backup DB</span>
+                                    </button>
+                                </form>
+                            </li>
+                            <li class="nav-item me-2">
+                                <button type="button" class="btn btn-outline-secondary btn-sm d-flex align-items-center gap-1" id="adminSyncBtn" title="Push data to remote server">
+                                    <i data-lucide="refresh-cw" class="icon-sm" id="adminSyncIcon"></i>
+                                    <span id="adminSyncLabel">Sync</span>
+                                    <span class="badge rounded-pill" id="adminSyncBadge" style="display:none;"></span>
+                                </button>
+                            </li>
                             <li class="nav-item dropdown">
                                 <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">
                                     <i data-lucide="user" class="icon-md"></i>
@@ -632,13 +649,18 @@ $authUser     = Auth::user();
                 var colDefs = noSortCols.map(function(i) {
                     return { orderable: false, searchable: false, targets: i };
                 });
+                var orderCol = parseInt(table.getAttribute('data-order-col') || '0', 10);
+                if (isNaN(orderCol) || orderCol < 0 || orderCol >= headers.length) {
+                    orderCol = 0;
+                }
+                var orderDir = (table.getAttribute('data-order-dir') || 'asc').toLowerCase() === 'desc' ? 'desc' : 'asc';
 
                 // ── Initialise DataTable ──
                 var dt = new DataTable(table, {
                     orderCellsTop: true,
                     pageLength: 10,
                     lengthMenu: [10, 25, 50, 100],
-                    order: [[0, 'asc']],
+                    order: [[orderCol, orderDir]],
                     columnDefs: colDefs,
                     language: {
                         search: '',
@@ -697,6 +719,101 @@ $authUser     = Auth::user();
         new bootstrap.Modal(document.getElementById('bfAlertModal')).show();
     }
     </script>
+
+    <script>
+    /* Admin backup button */
+    (function() {
+        var form = document.getElementById('adminBackupForm');
+        var btn = document.getElementById('adminBackupBtn');
+        if (!form || !btn) return;
+
+        form.addEventListener('submit', function(e) {
+            e.preventDefault();
+            if (btn.disabled) return;
+
+            bfConfirm('Create a new database backup now?', function() {
+                btn.disabled = true;
+                form.submit();
+            });
+        });
+    })();
+    </script>
+
+    <script>
+    /* ── Admin sync button ── */
+    (function() {
+        var btn   = document.getElementById('adminSyncBtn');
+        var icon  = document.getElementById('adminSyncIcon');
+        var label = document.getElementById('adminSyncLabel');
+        var badge = document.getElementById('adminSyncBadge');
+        if (!btn) return;
+
+        var syncing = false;
+
+        function setStatus(data) {
+            if (data.status === 'green') {
+                btn.className = 'btn btn-outline-success btn-sm d-flex align-items-center gap-1';
+                badge.style.display = 'none';
+            } else if (data.status === 'orange') {
+                btn.className = 'btn btn-outline-warning btn-sm d-flex align-items-center gap-1';
+                badge.textContent = data.pending;
+                badge.className = 'badge rounded-pill bg-warning text-dark';
+                badge.style.display = '';
+            } else {
+                btn.className = 'btn btn-outline-secondary btn-sm d-flex align-items-center gap-1';
+                if (data.message === 'Sync not configured') {
+                    badge.style.display = 'none';
+                } else {
+                    badge.textContent = data.pending || '!';
+                    badge.className = 'badge rounded-pill bg-danger';
+                    badge.style.display = '';
+                }
+            }
+            if (!syncing) {
+                label.textContent = data.status === 'green' ? 'Synced'
+                    : data.message === 'Sync not configured' ? 'Sync'
+                    : data.status === 'orange' ? 'Sync' : 'Offline';
+            }
+        }
+
+        function pollStatus() {
+            fetch('/api/sync/status').then(function(r) { return r.json(); }).then(setStatus).catch(function() {});
+        }
+
+        btn.addEventListener('click', function() {
+            if (syncing) return;
+            syncing = true;
+            label.textContent = 'Syncing…';
+            icon.style.animation = 'spin 1s linear infinite';
+            btn.disabled = true;
+
+            fetch('/api/sync/push', { method: 'POST' })
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    syncing = false;
+                    icon.style.animation = '';
+                    btn.disabled = false;
+                    if (data.success) {
+                        bfAlert('Sync complete — ' + data.records_synced + ' records pushed across ' + data.tables_synced + ' tables.');
+                    } else {
+                        bfAlert('Sync failed: ' + (data.errors ? data.errors.join('; ') : data.message));
+                    }
+                    pollStatus();
+                })
+                .catch(function() {
+                    syncing = false;
+                    icon.style.animation = '';
+                    btn.disabled = false;
+                    label.textContent = 'Sync';
+                    bfAlert('Sync request failed. Check your connection.');
+                });
+        });
+
+        pollStatus();
+        setInterval(pollStatus, 30000);
+    })();
+    </script>
+    <style>@keyframes spin { to { transform: rotate(360deg); } }</style>
 
     <?= $pageScripts ?? '' ?>
 </body>

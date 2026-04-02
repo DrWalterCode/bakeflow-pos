@@ -56,6 +56,8 @@ Router::post('/admin/users/delete',  [UserController::class, 'delete']);
 
 Router::get('/admin/settings',        [SettingsController::class, 'index']);
 Router::post('/admin/settings/save',  [SettingsController::class, 'save']);
+Router::post('/admin/settings/backup', [SettingsController::class, 'backupDatabase']);
+Router::post('/admin/settings/reset', [SettingsController::class, 'resetSystem']);
 
 Router::get('/admin/expenses',          [ExpenseController::class, 'index']);
 Router::post('/admin/expenses/store',  [ExpenseController::class, 'store']);
@@ -64,6 +66,7 @@ Router::post('/admin/expenses/delete', [ExpenseController::class, 'delete']);
 
 Router::get('/admin/production',          [ProductionController::class, 'index']);
 Router::post('/admin/production/store',   [ProductionController::class, 'store']);
+Router::post('/admin/production/adjust',  [ProductionController::class, 'adjustStock']);
 Router::post('/admin/production/delete',  [ProductionController::class, 'delete']);
 
 Router::get('/admin/cake-orders',                     [AdminCakeOrderController::class, 'index']);
@@ -88,6 +91,7 @@ Router::post('/api/print/receipt',   [PrinterController::class, 'printReceipt'])
 Router::post('/api/print/cake-order-slip', [PrinterController::class, 'printCakeOrderSlip']);
 Router::get('/api/sync/status',      [SyncController::class, 'status']);
 Router::post('/api/sync/push',       [SyncController::class, 'push']);
+Router::post('/api/sync/receive',    [SyncController::class, 'receive']);
 Router::get('/api/cake-orders/pending',              [CakeOrderController::class, 'pending']);
 Router::post('/api/cake-orders/{id}/collect-balance', [CakeOrderController::class, 'collectBalance']);
 Router::post('/api/cake-orders/{id}/mark-collected',  [CakeOrderController::class, 'markCollected']);

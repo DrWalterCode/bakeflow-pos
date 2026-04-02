@@ -7,6 +7,8 @@ use App\Controllers\BaseController;
 use App\Core\Database;
 use App\Core\SyncState;
 use App\Core\View;
+use App\Services\DatabaseBackupService;
+use App\Services\SystemResetService;
 
 class SettingsController extends BaseController
 {
@@ -82,6 +84,12 @@ class SettingsController extends BaseController
             'sync_remote_url',
             'tax_rate',
             'receipt_printer_name',
+            'remote_db_host',
+            'remote_db_port',
+            'remote_db_database',
+            'remote_db_username',
+            'remote_db_password',
+            'sync_api_key',
         ];
         foreach ($keys as $key) {
             if (isset($_POST[$key])) {
@@ -119,5 +127,91 @@ class SettingsController extends BaseController
 
         SyncState::markDirty($db, ['shops', 'settings', 'cake_sizes']);
         $this->redirect('/admin/settings', 'Settings saved.');
+    }
+
+    public function backupDatabase(): void
+    {
+        $this->requireAdmin();
+        $this->verifyCsrf();
+
+        $returnUrl = $this->resolveReturnUrl();
+
+        try {
+            $service = new DatabaseBackupService(Database::getConnection());
+            $result = $service->createBackup();
+        } catch (\Throwable $e) {
+            $this->redirect($returnUrl, 'Database backup failed: ' . $e->getMessage(), 'error');
+        }
+
+        $message = sprintf(
+            'Database backup created: %s',
+            $result['path']
+        );
+
+        $this->redirect($returnUrl, $message);
+    }
+
+    public function resetSystem(): void
+    {
+        $this->requireAdmin();
+        $this->verifyCsrf();
+
+        $options = [
+            'reset_transactions' => isset($_POST['reset_transactions']),
+            'reset_stock_zero' => isset($_POST['reset_stock_zero']),
+            'reset_expenses' => isset($_POST['reset_expenses']),
+        ];
+
+        if (!$options['reset_transactions'] && !$options['reset_stock_zero'] && !$options['reset_expenses']) {
+            $this->redirect('/admin/settings', 'Select at least one reset option.', 'error');
+        }
+
+        $db = Database::getConnection();
+        $service = new SystemResetService();
+
+        try {
+            $summary = $service->run($db, $options, trim((string)($_POST['reset_from_date'] ?? '')));
+        } catch (\Throwable $e) {
+            $this->redirect('/admin/settings', 'System reset failed: ' . $e->getMessage(), 'error');
+        }
+
+        $parts = [];
+        if ($options['reset_transactions']) {
+            $parts[] = $summary['transactions_deleted'] . ' transactions';
+            $parts[] = $summary['cake_orders_deleted'] . ' cake orders';
+        }
+        if ($options['reset_expenses']) {
+            $parts[] = $summary['expenses_deleted'] . ' expenses';
+        }
+        if ($options['reset_stock_zero']) {
+            $parts[] = $summary['stock_rows_zeroed'] . ' stock rows zeroed';
+        } elseif ($options['reset_transactions'] && (int)$summary['stock_units_restocked'] > 0) {
+            $parts[] = $summary['stock_units_restocked'] . ' stock units restored';
+        }
+
+        $scope = $summary['reset_from_date'] !== null
+            ? ' from ' . $summary['reset_from_date'] . ' onward'
+            : ' for all dates';
+
+        $message = 'System reset completed' . $scope . ': ' . implode(', ', $parts) . '.';
+        $this->redirect('/admin/settings', $message);
+    }
+
+    private function resolveReturnUrl(): string
+    {
+        $fallback = '/admin/settings';
+        $referer = (string)($_SERVER['HTTP_REFERER'] ?? '');
+        if ($referer === '') {
+            return $fallback;
+        }
+
+        $parts = parse_url($referer);
+        $path = (string)($parts['path'] ?? '');
+        if ($path === '' || !str_starts_with($path, '/admin')) {
+            return $fallback;
+        }
+
+        $query = isset($parts['query']) ? '?' . $parts['query'] : '';
+        return $path . $query;
     }
 }

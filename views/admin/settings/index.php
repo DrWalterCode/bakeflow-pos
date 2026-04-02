@@ -76,23 +76,64 @@
         <!-- Sync Settings -->
         <div class="col-12">
             <div class="card">
-                <div class="card-header"><h6 class="mb-0">Sync Settings</h6></div>
+                <div class="card-header"><h6 class="mb-0">Remote Sync</h6></div>
                 <div class="card-body">
+                    <p class="text-muted mb-3">Connect this terminal to a remote MySQL database so that sales, products and other data are pushed automatically. Leave the host blank to disable sync.</p>
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label">Remote DB Host</label>
+                            <input type="text" name="remote_db_host" class="form-control" value="<?= htmlspecialchars($settings['remote_db_host'] ?? '', ENT_QUOTES, 'UTF-8') ?>" placeholder="e.g. mysql.example.com">
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label">Port</label>
+                            <input type="number" name="remote_db_port" class="form-control" value="<?= htmlspecialchars($settings['remote_db_port'] ?? '3306', ENT_QUOTES, 'UTF-8') ?>" min="1" max="65535">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Database Name</label>
+                            <input type="text" name="remote_db_database" class="form-control" value="<?= htmlspecialchars($settings['remote_db_database'] ?? '', ENT_QUOTES, 'UTF-8') ?>">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Username</label>
+                            <input type="text" name="remote_db_username" class="form-control" value="<?= htmlspecialchars($settings['remote_db_username'] ?? '', ENT_QUOTES, 'UTF-8') ?>">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Password</label>
+                            <input type="password" name="remote_db_password" class="form-control" value="<?= htmlspecialchars($settings['remote_db_password'] ?? '', ENT_QUOTES, 'UTF-8') ?>" autocomplete="off">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Sync API Key</label>
+                            <input type="text" name="sync_api_key" class="form-control" value="<?= htmlspecialchars($settings['sync_api_key'] ?? '', ENT_QUOTES, 'UTF-8') ?>" placeholder="Optional">
+                        </div>
+                    </div>
+
+                    <hr class="my-4">
+
                     <div class="row g-3">
                         <div class="col-md-4">
-                            <label class="form-label">Sync Interval (seconds)</label>
+                            <label class="form-label">Push Interval</label>
                             <select name="sync_interval" class="form-select">
-                                <?php foreach ([60=>'1 min', 300=>'5 min', 900=>'15 min', 1800=>'30 min', 0=>'Manual only'] as $val => $label): ?>
+                                <?php foreach ([
+                                    60    => 'Every 1 minute',
+                                    300   => 'Every 5 minutes',
+                                    900   => 'Every 15 minutes',
+                                    1800  => 'Every 30 minutes',
+                                    3600  => 'Every 1 hour',
+                                    7200  => 'Every 2 hours',
+                                    21600 => 'Every 6 hours',
+                                    43200 => 'Every 12 hours',
+                                    0     => 'Manual only',
+                                ] as $val => $label): ?>
                                     <option value="<?= $val ?>" <?= ($settings['sync_interval'] ?? '300') == $val ? 'selected' : '' ?>><?= $label ?></option>
                                 <?php endforeach; ?>
                             </select>
+                            <small class="text-muted">How often this terminal pushes data to the remote server.</small>
                         </div>
                         <div class="col-md-8">
-                            <label class="form-label">Remote Server URL (for sync)</label>
-                            <input type="url" name="sync_remote_url" class="form-control" value="<?= htmlspecialchars($settings['sync_remote_url'] ?? '', ENT_QUOTES, 'UTF-8') ?>" placeholder="https://yourserver.com/api/sync">
+                            <label class="form-label">Remote Server URL</label>
+                            <input type="url" name="sync_remote_url" class="form-control" value="<?= htmlspecialchars($settings['sync_remote_url'] ?? '', ENT_QUOTES, 'UTF-8') ?>" placeholder="https://system.example.com/api/sync">
+                            <small class="text-muted">The URL of the remote BakeFlow instance. Sync pushes data here via HTTPS. If a direct MySQL connection is also configured, it is tried first.</small>
                         </div>
                     </div>
-                    <small class="text-muted d-block mt-2">Configure remote MySQL credentials in your <code>.env</code> file.</small>
                 </div>
             </div>
         </div>
@@ -136,3 +177,111 @@
         <button type="submit" class="btn btn-primary">Save Settings</button>
     </div>
 </form>
+
+<form method="POST" action="/admin/settings/reset" id="systemResetForm" class="mt-4">
+    <input type="hidden" name="_csrf_token" value="<?= htmlspecialchars($csrfToken, ENT_QUOTES, 'UTF-8') ?>">
+
+    <div class="card border-danger">
+        <div class="card-header bg-danger-subtle">
+            <h6 class="mb-0 text-danger">System Reset Tools</h6>
+        </div>
+        <div class="card-body">
+            <p class="text-muted mb-3">
+                Use this to keep products, categories, users and settings, while removing selected operational data.
+                If you enter a date, BakeFlow keeps records before that date and resets records on and after it.
+            </p>
+
+            <div class="row g-3">
+                <div class="col-lg-4">
+                    <div class="form-check border rounded p-3 h-100">
+                        <input class="form-check-input" type="checkbox" value="1" id="reset_transactions" name="reset_transactions">
+                        <label class="form-check-label fw-semibold" for="reset_transactions">Reset transactions</label>
+                        <div class="small text-muted mt-2">
+                            Removes transactions, transaction items, related cake orders, daily closings and sync log entries in the selected date range.
+                            Sold stock is added back automatically unless you also zero stock below.
+                        </div>
+                    </div>
+                </div>
+                <div class="col-lg-4">
+                    <div class="form-check border rounded p-3 h-100">
+                        <input class="form-check-input" type="checkbox" value="1" id="reset_stock_zero" name="reset_stock_zero">
+                        <label class="form-check-label fw-semibold" for="reset_stock_zero">Reset stock to 0</label>
+                        <div class="small text-muted mt-2">
+                            Sets every product stock balance to zero immediately. This applies to current stock balances, not a historical stock date.
+                        </div>
+                    </div>
+                </div>
+                <div class="col-lg-4">
+                    <div class="form-check border rounded p-3 h-100">
+                        <input class="form-check-input" type="checkbox" value="1" id="reset_expenses" name="reset_expenses">
+                        <label class="form-check-label fw-semibold" for="reset_expenses">Remove expenses</label>
+                        <div class="small text-muted mt-2">
+                            Deletes expense records in the selected date range. Expense categories remain in place.
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="row g-3 mt-1">
+                <div class="col-md-4">
+                    <label class="form-label" for="reset_from_date">Reset From Date</label>
+                    <input type="date" class="form-control" id="reset_from_date" name="reset_from_date" max="<?= date('Y-m-d') ?>">
+                    <small class="text-muted">Leave blank to reset all matching records.</small>
+                </div>
+                <div class="col-md-8">
+                    <label class="form-label" for="reset_reason">Operator Note</label>
+                    <input type="text" class="form-control" id="reset_reason" value="This action is destructive. Take a database backup before using it." readonly>
+                    <small class="text-muted">This tool does not remove products, categories, users, settings, cake sizes or other master data.</small>
+                </div>
+            </div>
+
+            <div class="alert alert-warning d-flex align-items-start gap-2 mt-4 mb-0" role="alert">
+                <i data-lucide="triangle-alert" class="icon-sm mt-1"></i>
+                <div>
+                    <strong>Backup first.</strong> This reset cannot be undone from the admin panel.
+                    Make a MySQL backup before running it on a live shop database.
+                </div>
+            </div>
+        </div>
+        <div class="card-footer d-flex justify-content-end">
+            <button type="submit" class="btn btn-danger">Run Reset</button>
+        </div>
+    </div>
+</form>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    var form = document.getElementById('systemResetForm');
+    if (!form) {
+        return;
+    }
+
+    form.addEventListener('submit', function(event) {
+        var options = [
+            document.getElementById('reset_transactions'),
+            document.getElementById('reset_stock_zero'),
+            document.getElementById('reset_expenses')
+        ].filter(function(input) { return input && input.checked; });
+
+        if (options.length === 0) {
+            event.preventDefault();
+            bfAlert('Select at least one reset option.');
+            return;
+        }
+
+        event.preventDefault();
+
+        var labels = options.map(function(input) {
+            var label = form.querySelector('label[for="' + input.id + '"]');
+            return label ? label.textContent.trim() : input.name;
+        });
+        var resetDate = document.getElementById('reset_from_date').value;
+        var scope = resetDate ? (' from ' + resetDate + ' onward') : ' for all dates';
+
+        bfConfirm(
+            'Run the following reset' + scope + ': ' + labels.join(', ') + '? Make sure you already have a backup.',
+            function() { form.submit(); }
+        );
+    });
+});
+</script>
