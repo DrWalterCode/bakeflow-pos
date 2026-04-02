@@ -19,13 +19,14 @@ class Router
 
     public static function dispatch(): void
     {
-        $method = $_SERVER['REQUEST_METHOD'];
+        $requestMethod = strtoupper((string)($_SERVER['REQUEST_METHOD'] ?? 'GET'));
+        $method = $requestMethod === 'HEAD' ? 'GET' : $requestMethod;
         $uri    = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
         $uri    = rtrim($uri, '/') ?: '/';
 
         // Exact match first
         if (isset(self::$routes[$method][$uri])) {
-            self::call(self::$routes[$method][$uri]);
+            self::invoke(self::$routes[$method][$uri], [], $requestMethod);
             return;
         }
 
@@ -35,7 +36,7 @@ class Router
             $pattern = '#^' . $pattern . '$#';
             if (preg_match($pattern, $uri, $matches)) {
                 $params = array_filter($matches, 'is_string', ARRAY_FILTER_USE_KEY);
-                self::call($handler, $params);
+                self::invoke($handler, $params, $requestMethod);
                 return;
             }
         }
@@ -53,5 +54,17 @@ class Router
         } else {
             $handler(...array_values($params));
         }
+    }
+
+    private static function invoke(callable|array $handler, array $params, string $requestMethod): void
+    {
+        if ($requestMethod === 'HEAD') {
+            ob_start();
+            self::call($handler, $params);
+            ob_end_clean();
+            return;
+        }
+
+        self::call($handler, $params);
     }
 }
