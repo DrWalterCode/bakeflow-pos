@@ -6,6 +6,12 @@ use App\Core\Env;
 $appName      = Env::get('APP_NAME', 'BakeFlow POS');
 $flashMessage = Session::getFlash('message');
 $flashType    = Session::getFlash('message_type', 'success');
+$flashAlertClass = match ($flashType) {
+    'error' => 'danger',
+    'warning' => 'warning',
+    'info' => 'info',
+    default => 'success',
+};
 $currentPath  = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
 $authUser     = Auth::user();
 $csrfToken    = Session::generateCsrfToken();
@@ -541,7 +547,7 @@ $csrfToken    = Session::generateCsrfToken();
                 <div class="container-xxl">
                     <!-- Flash messages -->
                     <?php if ($flashMessage): ?>
-                    <div class="alert alert-<?= $flashType === 'error' ? 'danger' : 'success' ?> alert-dismissible fade show mb-3" role="alert">
+                    <div class="alert alert-<?= $flashAlertClass ?> alert-dismissible fade show mb-3" role="alert">
                         <?= htmlspecialchars($flashMessage, ENT_QUOTES, 'UTF-8') ?>
                         <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
                     </div>

@@ -279,6 +279,36 @@
     </div>
 </form>
 
+<div class="card mt-4">
+    <div class="card-header">
+        <h6 class="mb-0">Current Operational Data Counts</h6>
+    </div>
+    <div class="card-body">
+        <p class="text-muted mb-3">
+            Refresh this page after running a reset to confirm exactly what still exists in the live database.
+        </p>
+        <div class="row g-3">
+            <?php foreach ([
+                'transactions' => 'POS Transactions',
+                'transaction_items' => 'Transaction Items',
+                'cake_orders' => 'Cake Orders',
+                'expenses' => 'Expenses',
+                'production_entries' => 'Production Entries',
+                'stock_adjustments' => 'Stock Adjustments',
+                'daily_closings' => 'Daily Closings',
+                'sync_log' => 'Sync Log',
+            ] as $key => $label): ?>
+            <div class="col-sm-6 col-lg-3">
+                <div class="border rounded p-3 h-100 bg-light">
+                    <div class="small text-muted text-uppercase"><?= htmlspecialchars($label, ENT_QUOTES, 'UTF-8') ?></div>
+                    <div class="fs-4 fw-semibold mt-1"><?= (int)($operationalCounts[$key] ?? 0) ?></div>
+                </div>
+            </div>
+            <?php endforeach; ?>
+        </div>
+    </div>
+</div>
+
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     var form = document.getElementById('systemResetForm');

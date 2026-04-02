@@ -25,8 +25,9 @@ class SettingsController extends BaseController
 
         $shop = $db->query("SELECT * FROM shops WHERE id = 1 LIMIT 1")->fetch();
         $cakeSizes = $db->query("SELECT id, name, price_base, deposit_amount FROM cake_sizes WHERE is_active = 1 ORDER BY sort_order")->fetchAll();
+        $operationalCounts = $this->fetchOperationalCounts($db);
 
-        View::render('admin.settings.index', compact('settings', 'shop', 'cakeSizes'));
+        View::render('admin.settings.index', compact('settings', 'shop', 'cakeSizes', 'operationalCounts'));
     }
 
     public function save(): void
@@ -207,12 +208,57 @@ class SettingsController extends BaseController
             $parts[] = $summary['stock_units_restocked'] . ' stock units restored';
         }
 
+        $affectedCount = 0;
+        foreach ([
+            'transactions_deleted',
+            'transaction_items_deleted',
+            'cake_orders_deleted',
+            'daily_closings_deleted',
+            'sync_log_deleted',
+            'expenses_deleted',
+            'production_entries_deleted',
+            'stock_adjustments_deleted',
+            'stock_rows_zeroed',
+            'stock_units_restocked',
+        ] as $key) {
+            $affectedCount += (int)($summary[$key] ?? 0);
+        }
+
         $scope = $summary['reset_from_date'] !== null
             ? ' from ' . $summary['reset_from_date'] . ' onward'
             : ' for all dates';
 
+        if ($affectedCount === 0) {
+            $message = 'No matching records were found' . $scope . '. Check the selected options and reset date, then refresh the counts below.';
+            $this->redirect('/admin/settings', $message, 'warning');
+        }
+
         $message = 'System reset completed' . $scope . ': ' . implode(', ', $parts) . '.';
         $this->redirect('/admin/settings', $message);
+    }
+
+    /**
+     * @return array<string, int>
+     */
+    private function fetchOperationalCounts(\PDO $db): array
+    {
+        $tables = [
+            'transactions',
+            'transaction_items',
+            'cake_orders',
+            'expenses',
+            'production_entries',
+            'stock_adjustments',
+            'daily_closings',
+            'sync_log',
+        ];
+
+        $counts = [];
+        foreach ($tables as $table) {
+            $counts[$table] = (int)$db->query("SELECT COUNT(*) FROM `{$table}`")->fetchColumn();
+        }
+
+        return $counts;
     }
 
     private function resolveReturnUrl(): string
