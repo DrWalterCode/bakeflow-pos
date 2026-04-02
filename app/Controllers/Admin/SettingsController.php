@@ -158,11 +158,21 @@ class SettingsController extends BaseController
 
         $options = [
             'reset_transactions' => isset($_POST['reset_transactions']),
+            'reset_cake_orders' => isset($_POST['reset_cake_orders']),
             'reset_stock_zero' => isset($_POST['reset_stock_zero']),
             'reset_expenses' => isset($_POST['reset_expenses']),
+            'reset_production_entries' => isset($_POST['reset_production_entries']),
+            'reset_stock_adjustments' => isset($_POST['reset_stock_adjustments']),
         ];
 
-        if (!$options['reset_transactions'] && !$options['reset_stock_zero'] && !$options['reset_expenses']) {
+        if (
+            !$options['reset_transactions']
+            && !$options['reset_cake_orders']
+            && !$options['reset_stock_zero']
+            && !$options['reset_expenses']
+            && !$options['reset_production_entries']
+            && !$options['reset_stock_adjustments']
+        ) {
             $this->redirect('/admin/settings', 'Select at least one reset option.', 'error');
         }
 
@@ -177,11 +187,19 @@ class SettingsController extends BaseController
 
         $parts = [];
         if ($options['reset_transactions']) {
-            $parts[] = $summary['transactions_deleted'] . ' transactions';
+            $parts[] = $summary['transactions_deleted'] . ' POS transactions';
+        }
+        if ($options['reset_cake_orders'] || $options['reset_transactions']) {
             $parts[] = $summary['cake_orders_deleted'] . ' cake orders';
         }
         if ($options['reset_expenses']) {
             $parts[] = $summary['expenses_deleted'] . ' expenses';
+        }
+        if ($options['reset_production_entries']) {
+            $parts[] = $summary['production_entries_deleted'] . ' production entries';
+        }
+        if ($options['reset_stock_adjustments']) {
+            $parts[] = $summary['stock_adjustments_deleted'] . ' stock adjustments';
         }
         if ($options['reset_stock_zero']) {
             $parts[] = $summary['stock_rows_zeroed'] . ' stock rows zeroed';

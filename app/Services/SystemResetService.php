@@ -13,18 +13,24 @@ class SystemResetService
     /**
      * @param array{
      *     reset_transactions?: bool,
+     *     reset_cake_orders?: bool,
      *     reset_stock_zero?: bool,
-     *     reset_expenses?: bool
+     *     reset_expenses?: bool,
+     *     reset_production_entries?: bool,
+     *     reset_stock_adjustments?: bool
      * } $options
      * @return array<string, mixed>
      */
     public function run(PDO $db, array $options, ?string $resetFromDate): array
     {
         $resetTransactions = (bool)($options['reset_transactions'] ?? false);
+        $resetCakeOrders = (bool)($options['reset_cake_orders'] ?? false);
         $resetStockZero = (bool)($options['reset_stock_zero'] ?? false);
         $resetExpenses = (bool)($options['reset_expenses'] ?? false);
+        $resetProductionEntries = (bool)($options['reset_production_entries'] ?? false);
+        $resetStockAdjustments = (bool)($options['reset_stock_adjustments'] ?? false);
 
-        if (!$resetTransactions && !$resetStockZero && !$resetExpenses) {
+        if (!$resetTransactions && !$resetCakeOrders && !$resetStockZero && !$resetExpenses && !$resetProductionEntries && !$resetStockAdjustments) {
             throw new InvalidArgumentException('Select at least one reset option.');
         }
 
@@ -40,6 +46,8 @@ class SystemResetService
             'stock_units_restocked' => 0,
             'stock_rows_zeroed' => 0,
             'expenses_deleted' => 0,
+            'production_entries_deleted' => 0,
+            'stock_adjustments_deleted' => 0,
         ];
 
         SyncState::ensureSchema($db);
@@ -48,11 +56,25 @@ class SystemResetService
             $db->beginTransaction();
 
             if ($resetTransactions) {
-                $summary = array_merge($summary, $this->resetTransactions($db, $normalizedDate));
+                foreach ($this->resetTransactions($db, $normalizedDate) as $key => $value) {
+                    $summary[$key] = (int)($summary[$key] ?? 0) + (int)$value;
+                }
+            }
+
+            if ($resetCakeOrders) {
+                $summary['cake_orders_deleted'] += $this->resetCakeOrders($db, $normalizedDate);
             }
 
             if ($resetExpenses) {
                 $summary['expenses_deleted'] = $this->resetExpenses($db, $normalizedDate);
+            }
+
+            if ($resetProductionEntries) {
+                $summary['production_entries_deleted'] = $this->resetProductionEntries($db, $normalizedDate);
+            }
+
+            if ($resetStockAdjustments) {
+                $summary['stock_adjustments_deleted'] = $this->resetStockAdjustments($db, $normalizedDate);
             }
 
             if ($resetStockZero) {
@@ -72,8 +94,17 @@ class SystemResetService
         if ($resetTransactions) {
             $dirtyTables = array_merge($dirtyTables, ['transactions', 'cake_orders', 'daily_closings', 'products']);
         }
+        if ($resetCakeOrders) {
+            $dirtyTables[] = 'cake_orders';
+        }
         if ($resetExpenses) {
             $dirtyTables[] = 'expenses';
+        }
+        if ($resetProductionEntries) {
+            $dirtyTables[] = 'production_entries';
+        }
+        if ($resetStockAdjustments) {
+            $dirtyTables[] = 'stock_adjustments';
         }
         if ($resetStockZero) {
             $dirtyTables[] = 'products';
@@ -233,6 +264,76 @@ class SystemResetService
         $count = (int)$countStmt->fetchColumn();
 
         $deleteStmt = $db->prepare('DELETE FROM expenses' . $where);
+        $deleteStmt->execute($params);
+
+        return $count;
+    }
+
+    private function resetCakeOrders(PDO $db, ?string $resetFromDate): int
+    {
+        $cakeOrderSql = '
+            FROM cake_orders co
+            LEFT JOIN transaction_items order_items ON order_items.id = co.transaction_item_id
+            LEFT JOIN transactions order_txn ON order_txn.id = order_items.transaction_id
+            LEFT JOIN transactions balance_txn ON balance_txn.id = co.balance_transaction_id
+        ';
+
+        $params = [];
+        $where = '';
+        if ($resetFromDate !== null) {
+            $where = ' WHERE order_txn.created_at >= ? OR balance_txn.created_at >= ? OR co.created_at >= ?';
+            $params = [
+                $resetFromDate . ' 00:00:00',
+                $resetFromDate . ' 00:00:00',
+                $resetFromDate . ' 00:00:00',
+            ];
+        }
+
+        $countStmt = $db->prepare('SELECT COUNT(DISTINCT co.id) ' . $cakeOrderSql . $where);
+        $countStmt->execute($params);
+        $count = (int)$countStmt->fetchColumn();
+
+        if ($count > 0) {
+            $deleteStmt = $db->prepare('DELETE co ' . $cakeOrderSql . $where);
+            $deleteStmt->execute($params);
+        }
+
+        return $count;
+    }
+
+    private function resetProductionEntries(PDO $db, ?string $resetFromDate): int
+    {
+        $where = '';
+        $params = [];
+        if ($resetFromDate !== null) {
+            $where = ' WHERE production_date >= ?';
+            $params[] = $resetFromDate;
+        }
+
+        $countStmt = $db->prepare('SELECT COUNT(*) FROM production_entries' . $where);
+        $countStmt->execute($params);
+        $count = (int)$countStmt->fetchColumn();
+
+        $deleteStmt = $db->prepare('DELETE FROM production_entries' . $where);
+        $deleteStmt->execute($params);
+
+        return $count;
+    }
+
+    private function resetStockAdjustments(PDO $db, ?string $resetFromDate): int
+    {
+        $where = '';
+        $params = [];
+        if ($resetFromDate !== null) {
+            $where = ' WHERE created_at >= ?';
+            $params[] = $resetFromDate . ' 00:00:00';
+        }
+
+        $countStmt = $db->prepare('SELECT COUNT(*) FROM stock_adjustments' . $where);
+        $countStmt->execute($params);
+        $count = (int)$countStmt->fetchColumn();
+
+        $deleteStmt = $db->prepare('DELETE FROM stock_adjustments' . $where);
         $deleteStmt->execute($params);
 
         return $count;

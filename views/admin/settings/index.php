@@ -195,19 +195,19 @@
                 <div class="col-lg-4">
                     <div class="form-check border rounded p-3 h-100">
                         <input class="form-check-input" type="checkbox" value="1" id="reset_transactions" name="reset_transactions">
-                        <label class="form-check-label fw-semibold" for="reset_transactions">Reset transactions</label>
+                        <label class="form-check-label fw-semibold" for="reset_transactions">Remove POS transactions</label>
                         <div class="small text-muted mt-2">
-                            Removes transactions, transaction items, related cake orders, daily closings and sync log entries in the selected date range.
+                            Removes POS transactions, line items, linked cake orders, daily closings and sync log entries in the selected date range.
                             Sold stock is added back automatically unless you also zero stock below.
                         </div>
                     </div>
                 </div>
                 <div class="col-lg-4">
                     <div class="form-check border rounded p-3 h-100">
-                        <input class="form-check-input" type="checkbox" value="1" id="reset_stock_zero" name="reset_stock_zero">
-                        <label class="form-check-label fw-semibold" for="reset_stock_zero">Reset stock to 0</label>
+                        <input class="form-check-input" type="checkbox" value="1" id="reset_cake_orders" name="reset_cake_orders">
+                        <label class="form-check-label fw-semibold" for="reset_cake_orders">Remove cake orders</label>
                         <div class="small text-muted mt-2">
-                            Sets every product stock balance to zero immediately. This applies to current stock balances, not a historical stock date.
+                            Deletes cake order records in the selected date range, including orders that were not removed through the POS transaction reset.
                         </div>
                     </div>
                 </div>
@@ -217,6 +217,36 @@
                         <label class="form-check-label fw-semibold" for="reset_expenses">Remove expenses</label>
                         <div class="small text-muted mt-2">
                             Deletes expense records in the selected date range. Expense categories remain in place.
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="row g-3 mt-1">
+                <div class="col-lg-4">
+                    <div class="form-check border rounded p-3 h-100">
+                        <input class="form-check-input" type="checkbox" value="1" id="reset_production_entries" name="reset_production_entries">
+                        <label class="form-check-label fw-semibold" for="reset_production_entries">Remove production history</label>
+                        <div class="small text-muted mt-2">
+                            Deletes production entry history in the selected date range. Current stock balances are not changed by this option.
+                        </div>
+                    </div>
+                </div>
+                <div class="col-lg-4">
+                    <div class="form-check border rounded p-3 h-100">
+                        <input class="form-check-input" type="checkbox" value="1" id="reset_stock_adjustments" name="reset_stock_adjustments">
+                        <label class="form-check-label fw-semibold" for="reset_stock_adjustments">Remove stock adjustments</label>
+                        <div class="small text-muted mt-2">
+                            Deletes stock adjustment history in the selected date range. Current stock balances are not changed by this option.
+                        </div>
+                    </div>
+                </div>
+                <div class="col-lg-4">
+                    <div class="form-check border rounded p-3 h-100">
+                        <input class="form-check-input" type="checkbox" value="1" id="reset_stock_zero" name="reset_stock_zero">
+                        <label class="form-check-label fw-semibold" for="reset_stock_zero">Reset stock to 0</label>
+                        <div class="small text-muted mt-2">
+                            Sets every product stock balance to zero immediately. This applies to current stock balances, not a historical stock date.
                         </div>
                     </div>
                 </div>
@@ -259,8 +289,11 @@ document.addEventListener('DOMContentLoaded', function() {
     form.addEventListener('submit', function(event) {
         var options = [
             document.getElementById('reset_transactions'),
+            document.getElementById('reset_cake_orders'),
             document.getElementById('reset_stock_zero'),
-            document.getElementById('reset_expenses')
+            document.getElementById('reset_expenses'),
+            document.getElementById('reset_production_entries'),
+            document.getElementById('reset_stock_adjustments')
         ].filter(function(input) { return input && input.checked; });
 
         if (options.length === 0) {
